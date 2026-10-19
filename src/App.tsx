@@ -14,6 +14,7 @@ import RecipeEdit from './screens/RecipeEdit';
 import IdeasScreen from './screens/Ideas';
 import SettingsScreen from './screens/Settings';
 import type { Member } from './lib/types';
+import { watchForUpdates } from './lib/update';
 
 export default function App() {
   const [toast, setToast] = useState<ToastState | null>(null);
@@ -23,9 +24,17 @@ export default function App() {
     const t = setTimeout(() => setToast(null), toast.undo ? 6000 : 3000);
     return () => clearTimeout(t);
   }, [toast]);
+  const [update, setUpdate] = useState(false);
+  useEffect(() => watchForUpdates(() => setUpdate(true)), []);
   return (
     <AppProvider onToast={onToast}>
       <Shell />
+      {update && (
+        <div className="toast update-toast" role="status">
+          <span>יש גרסה חדשה של האפליקציה</span>
+          <button onClick={() => location.reload()}>לרענן</button>
+        </div>
+      )}
       {toast && (
         <div className="toast" role="status">
           <span>{toast.msg}</span>

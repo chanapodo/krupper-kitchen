@@ -1,8 +1,10 @@
 // Simple offline support: pages from the network when possible, assets from cache.
-const CACHE = 'kk-v1';
+// The build stamps the commit into the cache name, so each deploy drops the previous assets.
+const CACHE = 'kk-__VERSION__';
+const NEVER_CACHE = /\/(version\.json|sw\.js)$/;
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(['./', 'manifest.webmanifest', 'icon-192.png'])).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(['./', 'manifest.webmanifest', 'icon-192.png'].map((u) => new Request(u, { cache: 'no-cache' })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (e) => {
@@ -15,9 +17,11 @@ self.addEventListener('fetch', (e) => {
   const req = e.request;
   const url = new URL(req.url);
   if (req.method !== 'GET' || url.origin !== location.origin) return; // Firebase traffic goes straight to the network
+  if (NEVER_CACHE.test(url.pathname)) return;
   if (req.mode === 'navigate') {
     e.respondWith(
-      fetch(req)
+      // skip the browser's HTTP cache too (GitHub Pages sends max-age=600), so a new deploy shows at once
+      fetch(req, { cache: 'no-cache' })
         .then((res) => {
           const copy = res.clone();
           caches.open(CACHE).then((c) => c.put('./', copy));

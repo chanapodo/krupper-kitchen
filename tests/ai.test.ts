@@ -17,7 +17,7 @@ vi.mock('firebase/ai', () => ({
   }),
 }));
 
-const { AiError, dailyResetText, findRecipe, quotaKindOf, quotaMessage, recipeFromLink, TIME_LIMIT_MS } = await import('../src/lib/ai');
+const { AiError, dailyResetText, detailOf, findRecipe, quotaKindOf, quotaMessage, recipeFromLink, TIME_LIMIT_MS } = await import('../src/lib/ai');
 const { MOCK_AI } = await import('../src/data/mockAi');
 
 const ok = { response: { text: () => JSON.stringify(MOCK_AI['פאי רועים']) } };
@@ -57,6 +57,7 @@ describe('AI on the free plan', () => {
     expect(e).toBeInstanceOf(AiError);
     expect(e.kind).toBe('quota');
     expect(e.message).toMatch(/המכסה החינמית של היום. היא מתחדשת (היום|מחר) בסביבות \d\d:\d\d/);
+    expect(e.detail).toBe('429 · GenerateRequestsPerDayPerProjectPerModel-FreeTier · retry 50000s · gemini-3.5-flash-lite, gemini-3.5-flash');
   });
 
   it('a per-minute limit on either model says "try again in a minute"', async () => {
@@ -75,6 +76,7 @@ describe('AI on the free plan', () => {
     const e = await p;
     expect(e.kind).toBe('timeout');
     expect(e.message).toMatch(/יותר מדי זמן/);
+    expect(e.detail).toBe('timeout 45s · gemini-3.5-flash-lite');
     expect(calls).toHaveLength(1);
   });
 
@@ -86,6 +88,10 @@ describe('AI on the free plan', () => {
 });
 
 describe('quota details', () => {
+  it('a short technical line for screenshots', () => {
+    expect(detailOf(Object.assign(new Error('[403 ] PERMISSION_DENIED: Firebase App Check token is invalid.'), { code: 'fetch-error' }))).toBe('403 PERMISSION_DENIED');
+    expect(detailOf(new TypeError('Failed to fetch'))).toBe('Failed to fetch');
+  });
   it('per minute vs per day, from details or message text', () => {
     expect(quotaKindOf(quota429('GenerateRequestsPerMinutePerProjectPerModel-FreeTier', '38s'))).toEqual({ kind: 'minute', retrySec: 38 });
     expect(quotaKindOf(quota429('GenerateRequestsPerDayPerProjectPerModel-FreeTier', '7200s')).kind).toBe('day');

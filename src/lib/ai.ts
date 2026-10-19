@@ -20,6 +20,8 @@ export const TIME_LIMIT_MS = 45_000;
 export type QuotaKind = 'minute' | 'day';
 
 export class AiError extends Error {
+  /** short technical line (status, quota, model) shown small under the message, for diagnosing from a screenshot */
+  detail = '';
   constructor(public kind: 'not-enabled' | 'quota' | 'timeout' | 'no-recipe' | 'offline' | 'other', message: string) {
     super(message);
   }
@@ -35,6 +37,24 @@ const MESSAGES: Record<Exclude<AiError['kind'], 'quota'>, string> = {
 
 export function aiMessage(e: unknown): string {
   return e instanceof AiError ? e.message : MESSAGES.other;
+}
+
+export function aiDetail(e: unknown): string {
+  return e instanceof AiError ? e.detail : '';
+}
+
+/** e.g. "429 RESOURCE_EXHAUSTED · GenerateRequestsPerDayPerProjectPerModel-FreeTier · retry 50000s · gemini-3.5-flash-lite" */
+export function detailOf(e: unknown): string {
+  if (e instanceof DraftError) return `draft: ${e.message}`;
+  const err = e as { code?: string; message?: string; model?: string; customErrorData?: { status?: number; statusText?: string } };
+  const t = errText(e);
+  const status = err?.customErrorData?.status ?? t.match(/\b([45]\d\d)\b/)?.[1];
+  const name = t.match(/\b(RESOURCE_EXHAUSTED|PERMISSION_DENIED|INVALID_ARGUMENT|NOT_FOUND|UNAVAILABLE|UNAUTHENTICATED|FAILED_PRECONDITION|DEADLINE_EXCEEDED|INTERNAL)\b/)?.[1];
+  const quotaId = t.match(/"quotaId"\s*:\s*"([^"]+)"/)?.[1];
+  const retry = quotaKindOf(e).retrySec;
+  const parts = [[status, name].filter(Boolean).join(' ') || err?.code, quotaId, retry !== undefined && /429|quota/i.test(t) ? `retry ${retry}s` : '', err?.model];
+  if (!status && !name) parts.push(String(err?.message ?? e).slice(0, 80));
+  return parts.filter(Boolean).join(' · ');
 }
 
 const errText = (e: unknown) => {
@@ -77,6 +97,13 @@ export function quotaMessage(q: { kind: QuotaKind; retrySec?: number }, now = ne
 }
 
 function classify(e: unknown): AiError {
+  const out = toAiError(e);
+  if (!out.detail) out.detail = detailOf(e);
+  if (e !== out) console.warn('AI error', out.kind, out.detail, e);
+  return out;
+}
+
+function toAiError(e: unknown): AiError {
   if (e instanceof AiError) return e;
   if (e instanceof DraftError) return new AiError('no-recipe', MESSAGES['no-recipe']);
   const msg = errText(e);
@@ -109,7 +136,12 @@ async function generate(parts: Part[], tools: 'url'[] = []): Promise<string> {
       ]);
       return res.response.text();
     } catch (e) {
-      if (ctrl.signal.aborted) throw new AiError('timeout', MESSAGES.timeout);
+      if (ctrl.signal.aborted) {
+        const t = new AiError('timeout', MESSAGES.timeout);
+        t.detail = `timeout ${Math.round(TIME_LIMIT_MS / 1000)}s · ${model}`;
+        throw t;
+      }
+      if (e && typeof e === 'object') (e as { model?: string }).model = model;
       errors.push(e);
       if (!isQuota(e) && !tryNext(e)) throw e;
     } finally {
@@ -119,7 +151,9 @@ async function generate(parts: Part[], tools: 'url'[] = []): Promise<string> {
   if (!errors.length) throw new AiError('timeout', MESSAGES.timeout);
   // both out of quota: if either is only a per-minute limit, that's the one worth reporting
   const quotas = errors.filter(isQuota);
-  throw quotas.find((e) => quotaKindOf(e).kind === 'minute') ?? quotas[0] ?? errors[errors.length - 1];
+  const pick = quotas.find((e) => quotaKindOf(e).kind === 'minute') ?? quotas[0] ?? errors[errors.length - 1];
+  if (pick && typeof pick === 'object') (pick as { model?: string }).model = errors.map((e) => (e as { model?: string })?.model).join(', ');
+  throw pick;
 }
 
 /** Known names (pantry, list) so new ingredients reuse the family's wording. */

@@ -1,3 +1,4 @@
+import { APP_VERSION } from '../lib/update';
 import { useState } from 'react';
 import { Avatar, go, PinPad, X } from '../components/ui';
 import type { Member, Settings } from '../lib/types';
@@ -133,6 +134,8 @@ export default function SettingsScreen() {
           }}>איפוס הדמו</button>
         </section>
       )}
+
+      <p className="muted small center">גרסה <span dir="ltr">{APP_VERSION}</span></p>
     </div>
   );
 }

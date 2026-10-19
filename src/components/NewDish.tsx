@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { aiMessage, findRecipe, recipeFromLink, type FoundRecipe } from '../lib/ai';
+import { APP_VERSION } from '../lib/update';
+import { aiDetail, aiMessage, findRecipe, recipeFromLink, type FoundRecipe } from '../lib/ai';
 import { kosherCompatible } from '../lib/logic';
 import { isUrl, nameOnlyRecipe } from '../lib/recipeDraft';
 import type { Kosher, MealType, Recipe } from '../lib/types';
@@ -29,6 +30,7 @@ export default function NewDish({ query, meal, slotKosher, onSaved, onWish, onMa
   const [step, setStep] = useState<Step>(isUrl(query) ? { s: 'link' } : { s: 'choose' });
   const [url, setUrl] = useState(isUrl(query) ? query.trim() : '');
   const [error, setError] = useState('');
+  const [detail, setDetail] = useState('');
   const name = isUrl(query) ? '' : query.trim();
   const known = [...new Set([...pantry.map((p) => p.name), ...shopping.map((s) => s.name)])];
 
@@ -41,6 +43,7 @@ export default function NewDish({ query, meal, slotKosher, onSaved, onWish, onMa
       setStep({ s: 'preview', found });
     } catch (e) {
       setError(aiMessage(e));
+      setDetail(`${aiDetail(e)} · v${APP_VERSION}`.replace(/^ · /, ''));
       setStep(what === 'link' ? { s: 'link' } : { s: 'choose' });
     }
   };
@@ -95,7 +98,12 @@ export default function NewDish({ query, meal, slotKosher, onSaved, onWish, onMa
   return (
     <div className="newdish">
       {name && <p className="newdish-title">״{name}״ עוד לא בספר המתכונים. מה עושים?</p>}
-      {error && <p className="note warn" role="alert">{error}</p>}
+      {error && (
+        <div className="note warn" role="alert">
+          {error}
+          {detail && <div className="err-detail">{detail}</div>}
+        </div>
+      )}
 
       {step.s === 'choose' && (
         <div className="newdish-options">
