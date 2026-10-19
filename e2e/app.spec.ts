@@ -12,7 +12,7 @@ async function shot(page: Page, name: string) {
 
 async function open(page: Page) {
   await page.clock.setFixedTime(MONDAY_EVENING);
-  await page.goto('/');
+  await page.goto('/?demo');
   await expect(page.getByText('מי משתמש/ת עכשיו?')).toBeVisible();
 }
 

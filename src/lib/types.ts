@@ -23,6 +23,10 @@ export interface Ingredient {
   name: string;
   qty?: number;
   unit?: string;
+  /** store aisle, for ingredients the catalog doesn't know */
+  aisle?: string;
+  /** frozen meat/chicken/fish that must be taken out to thaw */
+  thaw?: boolean;
 }
 
 export interface Recipe {
@@ -43,6 +47,10 @@ export interface Recipe {
   link?: string;
   /** memberId -> 1..5 */
   ratings: Record<string, number>;
+  /** 'pending' = a kid's suggestion waiting for a parent; hidden from the bank until approved */
+  status?: 'pending';
+  /** where an AI-found recipe came from */
+  sources?: string[];
   createdBy?: string;
   createdAt: number;
 }

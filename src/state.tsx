@@ -11,7 +11,11 @@ export interface AppData {
   loaded: boolean;
   /** null = Firebase family not set up yet */
   settings: Settings | null;
+  /** the family's recipe bank (kids' pending suggestions excluded) */
   recipes: Recipe[];
+  /** kids' suggestions waiting for a parent */
+  pendingRecipes: Recipe[];
+  /** every recipe by id, pending included */
   recipeMap: Map<string, Recipe>;
   pantry: PantryItem[];
   shopping: ShoppingItem[];
@@ -45,7 +49,7 @@ export interface ToastState {
 export function AppProvider({ children, onToast }: { children: ReactNode; onToast: (t: ToastState) => void }) {
   const [store, setStore] = useState<Store | null>(null);
   const [settings, setSettings] = useState<Settings | null | undefined>(undefined);
-  const [recipes, setRecipes] = useState<Recipe[]>([]);
+  const [allRecipes, setRecipes] = useState<Recipe[]>([]);
   const [pantry, setPantry] = useState<PantryItem[]>([]);
   const [shopping, setShopping] = useState<ShoppingItem[]>([]);
   const [weekList, setWeekList] = useState<Week[]>([]);
@@ -78,7 +82,9 @@ export function AppProvider({ children, onToast }: { children: ReactNode; onToas
     return () => offs.forEach((o) => o());
   }, [store]);
 
-  const recipeMap = useMemo(() => new Map(recipes.map((r) => [r.id, r])), [recipes]);
+  const recipeMap = useMemo(() => new Map(allRecipes.map((r) => [r.id, r])), [allRecipes]);
+  const recipes = useMemo(() => allRecipes.filter((r) => r.status !== 'pending'), [allRecipes]);
+  const pendingRecipes = useMemo(() => allRecipes.filter((r) => r.status === 'pending'), [allRecipes]);
   const weeks = useMemo(
     () => new Map(weekList.map((w) => [w.id, { ...emptyWeek(w.id), ...w }])),
     [weekList],
@@ -129,7 +135,7 @@ export function AppProvider({ children, onToast }: { children: ReactNode; onToas
   }
 
   const value: AppData = {
-    store, loaded: true, settings, recipes, recipeMap, pantry, shopping, weeks, getWeek, votes,
+    store, loaded: true, settings, recipes, pendingRecipes, recipeMap, pantry, shopping, weeks, getWeek, votes,
     isParentDevice, me, isParent, setMeId, toast,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

@@ -389,3 +389,21 @@ button.face.on, span.face.on { filter: none; opacity: 1; transform: scale(1.18);
 @media (max-width: 699px) { .hero .thumb-lg { aspect-ratio: auto; height: 160px; } }
 .dish { position: relative; padding-inline-end: 34px; }
 .dish > .icon-btn { position: absolute; top: 4px; inset-inline-end: 2px; }
+.note.warn { background: var(--peach); }
+.thaw-toggle { min-height: 34px; padding: 4px 8px; filter: grayscale(1); opacity: 0.5; }
+.thaw-toggle.on { filter: none; opacity: 1; background: var(--sky); box-shadow: none; color: inherit; }
+.add-new { display: flex; align-items: center; gap: 12px; text-align: start; padding: 12px 14px; border-radius: 16px; background: linear-gradient(135deg, var(--butter), #fff9e3); border: 1.5px dashed #e8d48a; }
+.add-new > span:last-child { display: flex; flex-direction: column; gap: 2px; }
+.add-new > span:last-child > span { font-size: 0.82rem; color: var(--ink-2); }
+.add-new-plus { width: 36px; height: 36px; border-radius: 50%; background: #fff; display: grid; place-items: center; font-size: 1.4rem; font-weight: 700; color: var(--primary); flex-shrink: 0; }
+.newdish { display: flex; flex-direction: column; gap: 12px; }
+.newdish.loading { align-items: center; text-align: center; padding: 30px 0; }
+.newdish-title { font-weight: 600; font-size: 1.05rem; }
+.newdish-options { display: flex; flex-direction: column; gap: 10px; }
+.option { display: flex; align-items: center; gap: 14px; text-align: start; padding: 14px; border-radius: 18px; background: #fff; border: 1.5px solid var(--line); box-shadow: var(--shadow); }
+.option:hover { border-color: var(--primary); }
+.option > span:last-child { display: flex; flex-direction: column; gap: 2px; }
+.option > span:last-child > span { font-size: 0.85rem; color: var(--ink-2); }
+.option-emoji { font-size: 1.6rem; width: 48px; height: 48px; border-radius: 14px; background: var(--lavender); display: grid; place-items: center; flex-shrink: 0; }
+.sources { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 6px; font-size: 0.85rem; }
+.pending-badge { background: var(--butter); color: #8a6d00; }

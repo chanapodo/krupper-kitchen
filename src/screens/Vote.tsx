@@ -4,26 +4,28 @@ import { weekLabel } from '../lib/dates';
 import { isKidFriendly, MAX_VOTES, toggleVote, votingWeekId } from '../lib/logic';
 import type { Vote } from '../lib/types';
 import { useApp } from '../state';
+import NewDish from '../components/NewDish';
+import { matchRecipes } from '../lib/recipeDraft';
 
 type F = 'all' | 'kids' | 'special' | 'quick';
 
 export default function VoteScreen() {
-  const { me, votes, recipes, store, settings, toast } = useApp();
+  const { me, votes, recipes, recipeMap, store, settings, toast } = useApp();
   const weekId = votingWeekId();
   const id = `${weekId}_${me?.id}`;
   const mine: Vote = votes.find((v) => v.id === id) ?? { id, weekId, memberId: me!.id, recipeIds: [], wishes: [], updatedAt: 0 };
   const [f, setF] = useState<F>('all');
   const [q, setQ] = useState('');
   const [wish, setWish] = useState('');
+  const [adding, setAdding] = useState(false);
   const others = votes.filter((v) => v.weekId === weekId && v.memberId !== me?.id);
 
   const save = (v: Vote) => store.set(`votes/${v.id}`, { ...v, updatedAt: Date.now() } as unknown as Record<string, unknown>);
 
-  const list = useMemo(() => recipes
+  const list = useMemo(() => matchRecipes(q, recipes)
     .filter((r) => f !== 'kids' || isKidFriendly(r, settings?.members ?? []))
     .filter((r) => f !== 'special' || r.tags.includes('מיוחד'))
     .filter((r) => f !== 'quick' || r.minutes <= 30)
-    .filter((r) => !q.trim() || r.title.includes(q.trim()) || r.cuisine.includes(q.trim()))
     .sort((a, b) => a.title.localeCompare(b.title, 'he')), [recipes, f, q, settings?.members]);
 
   const toggle = (rid: string) => {
@@ -35,11 +37,13 @@ export default function VoteScreen() {
     save({ ...mine, recipeIds: next });
   };
 
-  const addWish = () => {
-    const t = wish.trim();
+  const addWish = (text?: string) => {
+    const t = (text ?? wish).trim();
     if (!t) return;
     save({ ...mine, wishes: [...mine.wishes, t] });
     setWish('');
+    setAdding(false);
+    setQ('');
     toast('המשאלה נשלחה להורים 💌');
   };
 
@@ -61,7 +65,7 @@ export default function VoteScreen() {
         <div className="add-row">
           <input className="input" placeholder="למשל: ראמן, פנקייק, קציצות דגים…" value={wish}
             onChange={(e) => setWish(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addWish()} />
-          <button className="btn" onClick={addWish}>שליחה</button>
+          <button className="btn" onClick={() => addWish()}>שליחה</button>
         </div>
         {mine.wishes.length > 0 && (
           <div className="wish-chips">
@@ -75,7 +79,32 @@ export default function VoteScreen() {
         )}
       </section>
 
-      <input className="input" placeholder="חיפוש…" value={q} onChange={(e) => setQ(e.target.value)} />
+      <input className="input" placeholder="חיפוש מנה, או שם של מנה חדשה…" value={q} onChange={(e) => { setQ(e.target.value); setAdding(false); }} aria-label="חיפוש מנה" />
+      {q.trim() && !adding && !recipes.some((r) => r.title.replace(/\s/g, '') === q.trim().replace(/\s/g, '')) && (
+        <button className="add-new" onClick={() => setAdding(true)}>
+          <span className="add-new-plus">+</span>
+          <span><strong>להציע ״{q.trim()}״ כמנה חדשה</strong><span>אפשר לחפש לה מתכון, ואמא ואבא יאשרו</span></span>
+        </button>
+      )}
+      {adding && q.trim() && (
+        <section className="card">
+          <NewDish query={q.trim()} onWish={addWish} onSaved={(r) => {
+            const next = mine.recipeIds.length < MAX_VOTES ? [...mine.recipeIds, r.id] : mine.recipeIds;
+            save({ ...mine, recipeIds: next });
+            setAdding(false);
+            setQ('');
+          }} />
+        </section>
+      )}
+      {mine.recipeIds.some((id) => recipeMap.get(id)?.status === 'pending') && (
+        <div className="wish-chips">
+          {mine.recipeIds.map((id) => recipeMap.get(id)).filter((r) => r?.status === 'pending').map((r) => (
+            <span key={r!.id} className="wish">❤️ {r!.emoji} {r!.title} <span className="badge pending-badge">מחכה לאישור</span>
+              <button className="x" aria-label="הסרה" onClick={() => save({ ...mine, recipeIds: mine.recipeIds.filter((x) => x !== r!.id) })}><X /></button>
+            </span>
+          ))}
+        </div>
+      )}
       <Chips<F> value={f} onChange={setF} label="סינון" options={[
         { v: 'all', label: 'הכול' }, { v: 'kids', label: '👧 ילדים אוהבים' }, { v: 'special', label: '✨ מיוחד' }, { v: 'quick', label: '⚡ מהיר' },
       ]} />

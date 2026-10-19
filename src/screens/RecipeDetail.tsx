@@ -43,6 +43,19 @@ export default function RecipeDetail({ id }: { id: string }) {
     toast(`נוסף ל${DAY_NAMES[day]} ${MEAL_NAMES[meal]}, ${weekLabel(wk)}`);
   };
 
+  const approve = async () => {
+    const { status: _status, ...rest } = r;
+    await store.set(`recipes/${r.id}`, rest as unknown as Record<string, unknown>);
+    toast(`${r.title} נכנס לספר המתכונים 🎉`);
+  };
+
+  const reject = async () => {
+    if (!confirm(`לדחות את ההצעה ${r.title}?`)) return;
+    await store.remove(`recipes/${r.id}`);
+    toast('ההצעה נדחתה');
+    history.back();
+  };
+
   const del = async () => {
     if (!confirm(`למחוק את ${r.title}?`)) return;
     await store.remove(`recipes/${r.id}`);
@@ -52,6 +65,18 @@ export default function RecipeDetail({ id }: { id: string }) {
   return (
     <div className="stack recipe-detail">
       <button className="link back" onClick={() => history.back()}>→ חזרה</button>
+      {r.status === 'pending' && (
+        <section className="card soft-butter">
+          <strong>💡 הצעה של {settings?.members.find((m) => m.id === r.createdBy)?.name ?? 'הילדים'} – מחכה לאישור הורה</strong>
+          {isParent ? (
+            <div className="action-row">
+              <button className="btn" onClick={approve}><Ok /> לאשר לספר המתכונים</button>
+              <button className="btn ghost" onClick={() => go(`edit/${r.id}`)}>✏️ לערוך קודם</button>
+              <button className="btn ghost danger" onClick={reject}>לא הפעם</button>
+            </div>
+          ) : <span className="small">אחרי שאמא או אבא יאשרו, המנה תיכנס לספר המתכונים.</span>}
+        </section>
+      )}
       <div className="hero">
         <RecipeThumb recipe={r} size="lg" />
         <div className="hero-text">

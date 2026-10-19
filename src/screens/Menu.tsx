@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import NewDish from '../components/NewDish';
 import RecipePicker from '../components/RecipePicker';
 import { Avatar, go, KosherBadge, RecipeThumb, Sheet, useRoute, Ok, X } from '../components/ui';
 import { DAY_NAMES, dateOf, shiftWeek, shortDate, weekIdOf, weekLabel, ymd } from '../lib/dates';
@@ -13,6 +14,7 @@ export default function MenuScreen() {
   const [weekId, setWeekId] = useState(route[1] === 'next' ? shiftWeek(cur, 1) : cur);
   const [picking, setPicking] = useState<{ day: DayKey; meal: MealType } | null>(null);
   const [placing, setPlacing] = useState<Recipe | null>(null);
+  const [fromWish, setFromWish] = useState<string | null>(null);
   const week: Week = getWeek(weekId) ?? emptyWeek(weekId);
   const days = weekDays(!!settings?.shabbat);
   const voters = voteCounts(votes, weekId);
@@ -75,6 +77,13 @@ export default function MenuScreen() {
                   const r = recipeMap.get(id);
                   if (!r) return null;
                   const inMenu = w.included.includes(id);
+                  if (r.status === 'pending') {
+                    return (
+                      <button key={id} className="wish" onClick={() => go(`recipe/${id}`)} title="הצעה חדשה – לבדוק ולאשר">
+                        {r.emoji} {r.title} <span className="badge pending-badge">חדש – לאשר</span>
+                      </button>
+                    );
+                  }
                   return (
                     <button key={id} className={`wish ${inMenu ? 'in' : ''}`} onClick={() => !inMenu && setPlacing(r)}
                       title={inMenu ? 'כבר בתפריט' : 'להוסיף לתפריט'}>
@@ -82,7 +91,9 @@ export default function MenuScreen() {
                     </button>
                   );
                 })}
-                {w.wishes.map((t, i) => <span key={i} className="wish free">“{t}”</span>)}
+                {w.wishes.map((t, i) => (
+                  <button key={i} className="wish free" onClick={() => setFromWish(t)} title="למצוא מתכון ולהוסיף לתפריט">“{t}” +</button>
+                ))}
               </div>
             </div>
           ))}
@@ -149,6 +160,12 @@ export default function MenuScreen() {
           onPick={(r) => { addDish(picking.day, picking.meal, r); setPicking(null); }}
           onClose={() => setPicking(null)}
         />
+      )}
+
+      {fromWish && (
+        <Sheet title={`משאלה: ${fromWish}`} onClose={() => setFromWish(null)}>
+          <NewDish query={fromWish} onSaved={(r) => { setFromWish(null); setPlacing(r); }} />
+        </Sheet>
       )}
 
       {placing && (

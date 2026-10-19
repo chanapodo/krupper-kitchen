@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Avatar, go, PinPad, useRoute } from './components/ui';
 import { DEFAULT_SETTINGS, freshRecipes } from './data/seed';
+import { SEED_RECIPES } from './data/recipes';
 import { AppProvider, useApp, type ToastState } from './state';
 import Home from './screens/Home';
 import MenuScreen from './screens/Menu';
@@ -54,7 +55,7 @@ function Shell() {
       case 'pantry': return <PantryScreen />;
       case 'recipes': return <RecipesScreen />;
       case 'recipe': return <RecipeDetail id={route[1]} />;
-      case 'edit': return <RecipeEdit id={route[1]} />;
+      case 'edit': return <RecipeEdit id={route[1]} name={route[2] ? decodeURIComponent(route[2]) : undefined} />;
       case 'ideas': return <IdeasScreen />;
       case 'settings': return <SettingsScreen />;
       default: return <Home />;
@@ -187,7 +188,7 @@ function FirstSetup() {
           <>
             <div className="welcome-hero">🥘</div>
             <h1>ברוכים הבאים לבישולי קרופרז!</h1>
-            <p>זו הפעם הראשונה שהאפליקציה נפתחת. נבחר קוד הורים, ונטען 40 מתכונים משפחתיים כדי להתחיל.</p>
+            <p>זו הפעם הראשונה שהאפליקציה נפתחת. נבחר קוד הורים, ונטען {SEED_RECIPES.length} מתכונים משפחתיים כדי להתחיל.</p>
             <button className="btn big" onClick={() => setStep('pin')}>יאללה, מתחילים</button>
           </>
         )}

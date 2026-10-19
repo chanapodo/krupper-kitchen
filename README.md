@@ -53,3 +53,15 @@ A scheduled job can read it with the public web API key:
 1. `POST https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=<apiKey>` with `{"returnSecureToken":true}` → `idToken`
 2. `GET https://firestore.googleapis.com/v1/projects/<projectId>/databases/(default)/documents/families/krupper/meta/thaw` with `Authorization: Bearer <idToken>`
 3. Send `byDate[tomorrow].text` if present.
+
+## New dishes and AI recipes (v1.1)
+
+Every dish picker (menu slot, kids' voting, recipe bank) takes free text. A name that isn't in the bank offers:
+**find a recipe** (AI), **I have a link** (site or YouTube, AI reads it), or **just the name** (parents; kids' become a wish).
+AI results open in the recipe editor for review before saving; ingredient names are normalized to the catalog / pantry names (`src/lib/recipeDraft.ts`).
+A kid's recipe is saved with `status: "pending"` and stays out of the bank until a parent approves it on the recipe page (no rule change needed).
+
+AI runs in the browser through **Firebase AI Logic** (`firebase/ai`, Gemini Developer API backend, model `gemini-3.6-flash`, falling back to `gemini-3.5-flash`).
+- Find: Google Search grounding first; on the free Spark plan grounding returns 429 (no free quota), so the app falls back to a recipe the model writes from its own knowledge, labeled as such.
+- Links: URL context tool (falls back to search with the URL in the prompt); YouTube links are passed as video `fileData`.
+- Demo mode answers from `src/data/mockAi.ts`. E2E tests run with `/?demo`.

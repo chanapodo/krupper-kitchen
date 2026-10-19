@@ -13,7 +13,7 @@ function greeting(h: number) {
 }
 
 export default function Home() {
-  const { me, isParent, getWeek, recipeMap, recipes, pantry, shopping, votes, settings } = useApp();
+  const { me, isParent, getWeek, recipeMap, recipes, pendingRecipes, pantry, shopping, votes, settings } = useApp();
   const now = new Date();
   const banner = thawBanner(now, getWeek, recipeMap, pantry);
   const doneKey = banner ? `kk-thaw-done-${banner.date}-${banner.when}` : '';
@@ -79,12 +79,17 @@ export default function Home() {
         </button>
       )}
 
-      {isParent && (pending.length > 0 || kidVotes.length > 0) && (
+      {isParent && (pending.length > 0 || kidVotes.length > 0 || pendingRecipes.length > 0) && (
         <section className="card soft-peach">
           <h2>מחכה לך</h2>
           {pending.length > 0 && (
             <button className="row-btn" onClick={() => go('shop')}>
               🛒 {pending.length} בקשות לרשימת הקניות מחכות לאישור
+            </button>
+          )}
+          {pendingRecipes.length > 0 && (
+            <button className="row-btn" onClick={() => go(pendingRecipes.length === 1 ? `recipe/${pendingRecipes[0].id}` : 'recipes')}>
+              📖 {pendingRecipes.length === 1 ? `מתכון חדש שהילדים הציעו: ${pendingRecipes[0].title}` : `${pendingRecipes.length} מתכונים חדשים שהילדים הציעו`}
             </button>
           )}
           {kidVotes.length > 0 && (

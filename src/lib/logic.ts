@@ -4,10 +4,27 @@ import {
 import { addDays, dateOf, DAY_KEYS, dayKeyOf, shiftWeek, weekIdOf, ymd } from './dates';
 import { canon } from './units';
 import type {
-  DayKey, Kosher, MealType, Member, PantryItem, Recipe, ShoppingItem, ThawPlan, Vote, Week,
+  DayKey, Ingredient, Kosher, MealType, Member, PantryItem, Recipe, ShoppingItem, ThawPlan, Vote, Week,
 } from './types';
 
 export const MEAL_NAMES: Record<MealType, string> = { lunch: 'צהריים', dinner: 'ערב' };
+
+// ---------- ingredients ----------
+
+/** Aisle of a recipe ingredient: the catalog's, else what the recipe says. */
+export function ingAisle(i: Ingredient): string {
+  const a = aisleOf(i.name);
+  return a === 'אחר' && i.aisle ? i.aisle : a;
+}
+
+export function ingThaw(i: Ingredient): boolean {
+  return needsThaw(i.name) || !!i.thaw;
+}
+
+/** Recipes the family can use (kids' pending suggestions excluded). */
+export function approved(recipes: Recipe[]): Recipe[] {
+  return recipes.filter((r) => r.status !== 'pending');
+}
 
 // ---------- kosher ----------
 
@@ -158,7 +175,7 @@ export function neededFromMenu(
       } else {
         totals.set(tkey, {
           key, name: displayName(ing.name), qty: c.qty, unit: c.unit || undefined,
-          aisle: aisleOf(ing.name), recipes: [r.title], unknownQty: c.qty === undefined,
+          aisle: ingAisle(ing), recipes: [r.title], unknownQty: c.qty === undefined,
         });
       }
     }
@@ -361,7 +378,7 @@ export function thawForDate(
       const r = recipes.get(rid);
       if (!r) continue;
       const items = [
-        ...new Set(r.ingredients.filter((i) => needsThaw(i.name) && !inFridge.has(ingredientKey(i.name))).map((i) => displayName(i.name))),
+        ...new Set(r.ingredients.filter((i) => ingThaw(i) && !inFridge.has(ingredientKey(i.name))).map((i) => displayName(i.name))),
       ];
       if (items.length) out.push({ date: ymd(date), meal, recipe: r.title, items });
     }
@@ -370,7 +387,7 @@ export function thawForDate(
 }
 
 export function recipeNeedsThaw(r: Recipe): boolean {
-  return r.ingredients.some((i) => needsThaw(i.name));
+  return r.ingredients.some(ingThaw);
 }
 
 export interface ThawBanner {
