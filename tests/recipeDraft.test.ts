@@ -1,11 +1,12 @@
 import fixture from './fixtures/gemini-shepherds-pie.txt?raw';
+import linkFixture from './fixtures/gemini-link-heninthekitchen.txt?raw';
 import { describe, expect, it } from 'vitest';
 import { ingredientKey } from '../src/data/catalog';
 import { MOCK_AI } from '../src/data/mockAi';
 import { weekIdOf } from '../src/lib/dates';
 import { neededFromMenu, recipeNeedsThaw, thawBanner } from '../src/lib/logic';
 import {
-  draftFromAi, DraftError, emojiFor, extractJson, findPrompt, guessKosher, isUrl, knowledgePrompt, kosherConflict,
+  draftFromAi, DraftError, emojiFor, extractJson, guessKosher, isUrl, knowledgePrompt, kosherConflict,
   linkPrompt, matchRecipes, nameOnlyRecipe, normalizeIngredientName, normalizeUnit,
 } from '../src/lib/recipeDraft';
 import { SEED_RECIPES } from '../src/data/recipes';
@@ -120,6 +121,17 @@ describe('AI reply -> recipe draft', () => {
     expect(d.ingredients.find((i) => i.name === 'בצל')?.unit).toBeUndefined();
     expect(d.steps.length).toBeGreaterThan(4);
   });
+
+  it('parses a real link reply with unescaped ק"ג (gemini-3.5-flash-lite + URL context)', () => {
+    const link = 'https://heninthekitchen.com/blog/2021/12/15/%D7%A4%D7%90%D7%99-%D7%A8%D7%95%D7%A2%D7%99%D7%9D/';
+    const d = draftFromAi(extractJson(linkFixture), { fallbackName: '', link });
+    expect(d.title).toBe('פאי רועים');
+    expect(d.kosher).toBe('meat');
+    expect(d.ingredients.find((i) => i.name === 'תפוחי אדמה')).toMatchObject({ qty: 1.5, unit: 'ק"ג' });
+    expect(d.ingredients.map((i) => i.name)).toEqual(expect.arrayContaining(['בשר טחון', 'סלרי', 'ראס אל חנות']));
+    expect(d.link).toBe(link);
+    expect(extractJson('{"a": "ק"ג", "b": "צה"ל"}')).toEqual({ a: 'ק"ג', b: 'צה"ל' });
+  });
 });
 
 describe('helpers', () => {
@@ -128,9 +140,9 @@ describe('helpers', () => {
     expect(emojiFor('מרק עוף')).toBe('🥣');
     expect(isUrl('https://youtu.be/x1')).toBe(true);
     expect(isUrl('פאי רועים')).toBe(false);
-    expect(findPrompt('פאי רועים')).toContain('"פאי רועים"');
+    expect(knowledgePrompt('פאי רועים')).toContain('"פאי רועים"');
     expect(knowledgePrompt('פאי')).toContain('sources: [] (ריק)');
-    expect(linkPrompt('https://a.b/c', true)).toContain('חפש/י');
+    expect(linkPrompt('https://a.b/c')).toContain('ואל תמציא/י');
   });
   it('free-text search ignores spaces and geresh', () => {
     expect(matchRecipes('שקשוקה', SEED_RECIPES).map((r) => r.id)).toEqual(['shakshuka']);

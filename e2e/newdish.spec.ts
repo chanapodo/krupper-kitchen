@@ -45,7 +45,7 @@ test('parent: a dish that is not in the bank — find a recipe, review it, it la
   await expect(sheet.getByText(/מחפשת מתכון לפאי רועים/)).toBeVisible();
 
   // editable preview, normalized names
-  await expect(sheet.getByText(/נמצא באינטרנט/)).toBeVisible();
+  await expect(sheet.getByText(/נכתב על ידי ה־AI/)).toBeVisible();
   await expect(sheet.getByLabel('מצרך 1')).toHaveValue('בשר טחון');
   await expect(sheet.getByLabel('מצרך 2')).toHaveValue('בצל');
   await expect(sheet.locator('.chip.kosher-chip-meat.on')).toBeVisible();

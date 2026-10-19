@@ -61,7 +61,10 @@ Every dish picker (menu slot, kids' voting, recipe bank) takes free text. A name
 AI results open in the recipe editor for review before saving; ingredient names are normalized to the catalog / pantry names (`src/lib/recipeDraft.ts`).
 A kid's recipe is saved with `status: "pending"` and stays out of the bank until a parent approves it on the recipe page (no rule change needed).
 
-AI runs in the browser through **Firebase AI Logic** (`firebase/ai`, Gemini Developer API backend, model `gemini-3.6-flash`, falling back to `gemini-3.5-flash`).
-- Find: Google Search grounding first; on the free Spark plan grounding returns 429 (no free quota), so the app falls back to a recipe the model writes from its own knowledge, labeled as such.
-- Links: URL context tool (falls back to search with the URL in the prompt); YouTube links are passed as video `fileData`.
+AI runs in the browser through **Firebase AI Logic** (`firebase/ai`, Gemini Developer API backend), model `gemini-3.5-flash-lite` (most generous free limits), tried once on `gemini-3.5-flash` if the first is out of quota, missing or overloaded. Free (Spark) plan rules in `src/lib/ai.ts`:
+- No Google Search grounding anywhere: it has no free quota and always answers 429.
+- Find: the model writes a classic recipe from what it knows (labeled as such).
+- Links: URL context tool; YouTube links are passed as video `fileData`.
+- No retries on the same model; everything gives up after 45 s with a Hebrew "took too long" message.
+- A 429 says whether the per-minute limit (try again in a minute) or the daily one (resets at midnight Pacific, ~10:00 Israel time) was hit, from the error's QuotaFailure/RetryInfo details.
 - Demo mode answers from `src/data/mockAi.ts`. E2E tests run with `/?demo`.

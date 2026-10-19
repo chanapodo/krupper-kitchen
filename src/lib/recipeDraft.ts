@@ -46,23 +46,17 @@ const RULES = `כללים:
 - להחזיר JSON אחד בלבד, בלי טקסט לפניו או אחריו, בצורה הזו:
 ${SHAPE}`;
 
-export function findPrompt(dish: string): string {
-  return `מצא/י באינטרנט מתכון ביתי מוצלח ומדורג היטב, רצוי מאתר מתכונים ישראלי בעברית, למנה: "${dish}".
-מתאים למשפחה עם ילדים בני 8 ו־12.
-${RULES}`;
-}
-
-/** Without web search: the model writes a classic version from what it knows. */
+/** No web search (no free quota for it): the model writes a classic version from what it knows. */
 export function knowledgePrompt(dish: string): string {
   return `כתוב/י מתכון ביתי מוצלח וקלאסי, כמו שמופיע באתרי מתכונים ישראליים, למנה: "${dish}".
 מתאים למשפחה עם ילדים בני 8 ו־12. אם אינך מכיר/ה מנה בשם הזה, החזר/י {"error": "no-recipe"}.
 ${RULES.replace(/- sources:.*\n/, '- sources: [] (ריק).\n')}`;
 }
 
-export function linkPrompt(url: string, viaSearch: boolean): string {
-  return `${viaSearch ? 'חפש/י ופתח/י את' : 'קרא/י את'} המתכון בכתובת הזו: ${url}
+export function linkPrompt(url: string): string {
+  return `קרא/י את המתכון בכתובת הזו: ${url}
 חלץ/י ממנו את המתכון (אם זה סרטון – לפי מה שמוכן בסרטון ובתיאור שלו), ותרגם/י לעברית אם צריך.
-אם אין בכתובת מתכון, החזר/י {"error": "no-recipe"}.
+אם אין בכתובת מתכון, או שלא הצלחת לפתוח אותה, החזר/י {"error": "no-recipe"} ואל תמציא/י מתכון.
 ${RULES}`;
 }
 
@@ -77,9 +71,9 @@ export function extractJson(text: string): unknown {
   try {
     return JSON.parse(raw);
   } catch {
-    // common slips: trailing commas, smart quotes
+    // common slips: trailing commas, smart quotes, unescaped Hebrew gershayim (ק"ג)
     try {
-      return JSON.parse(raw.replace(/,\s*([}\]])/g, '$1').replace(/[“”]/g, '"'));
+      return JSON.parse(raw.replace(/,\s*([}\]])/g, '$1').replace(/[“”]/g, '"').replace(/([\u0590-\u05FF])"(?=[\u0590-\u05FF])/g, '$1\\"'));
     } catch {
       throw new DraftError('bad-json');
     }

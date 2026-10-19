@@ -79,9 +79,8 @@ export default function NewDish({ query, meal, slotKosher, onSaved, onWish, onMa
         onSubmit={save}
         top={
           <div className={`note ${via === 'ai' ? 'warn' : ''}`}>
-            {via === 'web' && <>🔎 נמצא באינטרנט. עברו על המצרכים והכמויות ותקנו מה שצריך לפני השמירה.</>}
             {via === 'link' && <>🔗 נקרא מהקישור. עברו על המצרכים והכמויות ותקנו מה שצריך לפני השמירה.</>}
-            {via === 'ai' && <>✨ חיפוש באינטרנט לא זמין כרגע, אז המתכון נכתב על ידי ה־AI לפי מתכונים מוכרים. כדאי לעבור עליו לפני השמירה.</>}
+            {via === 'ai' && <>✨ המתכון נכתב על ידי ה־AI לפי מתכונים מוכרים. עברו על המצרכים והכמויות ותקנו מה שצריך לפני השמירה.</>}
             {!!recipe.sources?.length && (
               <div className="sources">
                 {recipe.sources.slice(0, 3).map((u) => <a key={u} href={u} target="_blank" rel="noreferrer">{hostOf(u)} ↗</a>)}
