@@ -1,11 +1,11 @@
 {
   "familyId": "krupper",
   "firebase": {
-    "apiKey": "",
-    "authDomain": "",
-    "projectId": "",
-    "storageBucket": "",
-    "messagingSenderId": "",
-    "appId": ""
+    "apiKey": "AIzaSyDHg82QVzOkkBMCT2QNr3PTZiCgSo_tBbo",
+    "authDomain": "krupper-kitchen.firebaseapp.com",
+    "projectId": "krupper-kitchen",
+    "storageBucket": "krupper-kitchen.firebasestorage.app",
+    "messagingSenderId": "1082974988869",
+    "appId": "1:1082974988869:web:b5e5f7307f2584386d112c"
   }
 }
