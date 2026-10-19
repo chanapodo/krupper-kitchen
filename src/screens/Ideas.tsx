@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Chips, go, KOSHER_LABEL, KosherBadge, RecipeThumb } from '../components/ui';
 import { ingredientKey } from '../data/catalog';
-import { dinnerIdeas, newShoppingItem, type IdeaFilter } from '../lib/logic';
+import { dinnerIdeas, newShoppingItem, type IdeaFilter, onList } from '../lib/logic';
 import type { Kosher, MealType } from '../lib/types';
 import { useApp } from '../state';
 
@@ -14,7 +14,7 @@ export default function IdeasScreen() {
 
   const ask = async (names: string[]) => {
     if (!me) return;
-    const listed = new Set(shopping.map((s) => ingredientKey(s.name)));
+    const listed = new Set(shopping.filter(onList).map((s) => ingredientKey(s.name)));
     const todo = names.filter((n) => !listed.has(ingredientKey(n)));
     for (const n of todo) await store.set(`shopping/${store.newId()}`, newShoppingItem(n, me.id, isParent) as unknown as Record<string, unknown>);
     toast(todo.length ? (isParent ? 'נוסף לרשימת הקניות' : 'נשלח להורים לאישור 🙏') : 'כבר ברשימה');

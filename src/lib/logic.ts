@@ -157,6 +157,25 @@ export function neededFromMenu(
   pantry: PantryItem[],
   manual: ShoppingItem[] = [],
 ): NeededItem[] {
+  return menuNeeds(week, recipes, pantry, manual).need;
+}
+
+/** Menu ingredients left off the list because the pantry already has enough ("יש בבית"). */
+export function coveredByPantry(
+  week: Week | undefined,
+  recipes: Map<string, Recipe>,
+  pantry: PantryItem[],
+  manual: ShoppingItem[] = [],
+): (NeededItem & { have: PantryItem[] })[] {
+  return menuNeeds(week, recipes, pantry, manual).covered;
+}
+
+function menuNeeds(
+  week: Week | undefined,
+  recipes: Map<string, Recipe>,
+  pantry: PantryItem[],
+  manual: ShoppingItem[],
+): { need: NeededItem[]; covered: (NeededItem & { have: PantryItem[] })[] } {
   const totals = new Map<string, NeededItem & { unknownQty: boolean }>();
   for (const rid of plannedRecipeIds(week)) {
     const r = recipes.get(rid);
@@ -183,8 +202,9 @@ export function neededFromMenu(
 
   const idx = pantryIndex(pantry);
   const skipped = new Set(week?.skipped ?? []);
-  const listed = new Set(manual.filter((m) => m.status !== 'bought').map((m) => ingredientKey(m.name)));
+  const listed = new Set(manual.filter((m) => m.status === 'active').map((m) => ingredientKey(m.name)));
   const out: NeededItem[] = [];
+  const coveredRows: (NeededItem & { have: PantryItem[] })[] = [];
   for (const t of totals.values()) {
     if (skipped.has(t.key) || listed.has(t.key)) continue;
     const stock = idx.get(t.key) ?? [];
@@ -199,10 +219,11 @@ export function neededFromMenu(
         qty -= pc.qty;
       }
     }
-    if (covered || (qty !== undefined && qty <= 0)) continue;
-    out.push({ key: t.key, name: t.name, qty, unit: t.unit, aisle: t.aisle, recipes: t.recipes });
+    const item = { key: t.key, name: t.name, qty, unit: t.unit, aisle: t.aisle, recipes: t.recipes };
+    if (covered || (qty !== undefined && qty <= 0)) coveredRows.push({ ...item, qty: t.unknownQty ? undefined : t.qty, have: stock });
+    else out.push(item);
   }
-  return out;
+  return { need: out, covered: coveredRows };
 }
 
 export interface ListRow {
@@ -247,6 +268,77 @@ export function buildList(
     pending: items.filter((i) => i.status === 'pending').sort((a, b) => a.createdAt - b.createdAt),
   };
 }
+
+// ---------- list history: recently bought / removed, with restore ----------
+
+export const HISTORY_HOURS = 24;
+export const HISTORY_MAX = 20;
+
+/** Recently bought or removed items, newest first (last 24 hours, at most 20). */
+export function recentDone(items: ShoppingItem[], now = Date.now()): ShoppingItem[] {
+  return items
+    .filter((i) => (i.status === 'bought' || i.status === 'removed') && (i.doneAt ?? 0) > now - HISTORY_HOURS * 3600_000)
+    .sort((a, b) => (b.doneAt ?? 0) - (a.doneAt ?? 0))
+    .slice(0, HISTORY_MAX);
+}
+
+/** History docs old enough to delete for good (a week). */
+export function staleDone(items: ShoppingItem[], now = Date.now()): ShoppingItem[] {
+  return items.filter((i) => (i.status === 'bought' || i.status === 'removed') && (i.doneAt ?? 0) < now - 7 * 24 * 3600_000);
+}
+
+/** The history record for a row leaving the list (written over a manual item's own doc, or as a new doc for a menu row). */
+export function doneRecord(
+  row: ListRow | ShoppingItem,
+  kind: 'bought' | 'removed',
+  by: string,
+  extra: { weekId?: string; pantry?: ShoppingItem['pantry'] } = {},
+  now = Date.now(),
+): Omit<ShoppingItem, 'id'> {
+  const isRow = 'fromMenu' in row;
+  const item = isRow ? row.item : row;
+  const base: Omit<ShoppingItem, 'id'> = item
+    ? (({ id: _id, ...rest }) => rest)(item)
+    : { name: row.name, aisle: row.aisle, status: 'active', addedBy: by, createdAt: now, ...(row.qty !== undefined ? { qty: row.qty } : {}), ...(row.unit ? { unit: row.unit } : {}) };
+  return {
+    ...base,
+    status: kind,
+    doneAt: now,
+    doneBy: by,
+    ...(item ? { prevStatus: item.status === 'pending' ? 'pending' : 'active' } : {}),
+    ...(isRow && row.fromMenu ? { menuKey: row.id.slice('menu:'.length), recipes: row.recipes } : {}),
+    ...(extra.weekId && isRow && row.fromMenu && kind === 'removed' ? { weekId: extra.weekId } : {}),
+    ...(extra.pantry ? { pantry: extra.pantry } : {}),
+  };
+}
+
+/** Taking a purchase back out of the pantry: delete the doc, write it back smaller (or as it was), or leave it. */
+export function undoPantry(
+  pantry: PantryItem[],
+  rec: NonNullable<ShoppingItem['pantry']>,
+  now = Date.now(),
+): { remove: true } | { data: Omit<PantryItem, 'id'> } | null {
+  const p = pantry.find((x) => x.id === rec.id);
+  if (!p) return null;
+  const { id: _id, ...doc } = p;
+  const cur = canon(p.qty, p.unit);
+  const add = canon(rec.qty, rec.unit);
+  const left = cur.qty !== undefined && add.qty !== undefined && cur.unit === add.unit ? Math.round((cur.qty - add.qty) * 1000) / 1000 : undefined;
+  if (left !== undefined && left > 0) return { data: { ...doc, qty: left, ...(cur.unit ? { unit: cur.unit } : {}), updatedAt: now } };
+  if (rec.created) return { remove: true };
+  // it was there before the purchase: put back what it said then
+  const { qty: _q, unit: _u, ...bare } = doc;
+  return { data: { ...bare, ...(rec.prevQty !== undefined ? { qty: rec.prevQty } : {}), ...(rec.prevUnit ? { unit: rec.prevUnit } : {}), updatedAt: now } };
+}
+
+/** The item as it was on the list (to restore a manual item's doc). */
+export function restoredItem(rec: ShoppingItem): Omit<ShoppingItem, 'id'> {
+  const { id: _id, doneAt: _a, doneBy: _b, prevStatus, pantry: _p, menuKey: _m, weekId: _w, recipes: _r, ...rest } = rec;
+  return { ...rest, status: prevStatus ?? 'active' };
+}
+
+/** Still on the list (or waiting for approval), not history. */
+export const onList = (s: ShoppingItem) => s.status === 'active' || s.status === 'pending';
 
 /** Who may do what on the shopping list. Kids only suggest; parents decide. */
 export const listPermissions = (isParent: boolean) => ({

@@ -33,12 +33,12 @@ npm run build
 | `recipes/{id}` | recipe, `ratings: {memberId: 1..5}` | anyone adds/rates; parents edit/delete |
 | `weeks/{sundayDate}` | `days.{sun..sat}.{lunch,dinner}.recipeIds`, `skipped` list items | parents |
 | `votes/{week}_{member}` | kid's picks (max 5) and free-text wishes | anyone |
-| `shopping/{id}` | manual items; kids create only `status: "pending"` | parents approve / check / delete |
+| `shopping/{id}` | manual items; kids create only `status: "pending"`. Bought / removed items stay as history (`status: "bought" \| "removed"`, `doneAt`, and what is needed to restore: `prevStatus`, `menuKey` + `weekId`, `pantry`) for "recently bought / removed"; deleted after a week | parents approve / check / remove / restore |
 | `pantry/{id}` | name, qty, unit, `location: fridge/freezer/pantry` | parents |
 
 The menu part of the shopping list is computed live (`src/lib/logic.ts → neededFromMenu`):
 week's ingredients, summed, minus pantry stock, minus staples (salt, oil, spices…).
-Checking an item moves it into the pantry, which removes it from the list.
+Checking an item moves it into the pantry, which removes it from the list. Every removal (bought, "have it", delete, rejected suggestion) shows a big undo toast for 8 seconds and stays restorable for 24 hours under "נקנו והוסרו לאחרונה"; rows the pantry covers are listed under "יש בבית" with "add anyway".
 
 ## Nightly thaw reminder (for later)
 

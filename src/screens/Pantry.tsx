@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Chips, Empty } from '../components/ui';
 import { defaultLocation, displayName, ingredientKey, needsThaw, SUGGESTIONS } from '../data/catalog';
-import { addToPantry, bumpPantry, newShoppingItem } from '../lib/logic';
+import { addToPantry, bumpPantry, newShoppingItem, onList } from '../lib/logic';
 import type { Location, PantryItem } from '../lib/types';
 import { formatQty } from '../lib/units';
 import { useApp } from '../state';
@@ -43,7 +43,7 @@ export default function PantryScreen() {
     const next = bumpPantry(p, dir);
     if (next === null) {
       await store.remove(`pantry/${p.id}`);
-      toast(`${p.name} נגמר`, () => put(p.id, p));
+      toast(`נגמר: ${p.name}`, () => put(p.id, p));
     } else {
       await store.update(`pantry/${p.id}`, { qty: next, updatedAt: Date.now() });
     }
@@ -51,7 +51,7 @@ export default function PantryScreen() {
 
   const ranOut = async (p: PantryItem) => {
     if (!me) return;
-    if (shopping.some((s) => ingredientKey(s.name) === ingredientKey(p.name) && s.status !== 'bought')) {
+    if (shopping.some((s) => onList(s) && ingredientKey(s.name) === ingredientKey(p.name))) {
       toast(`${p.name} כבר ברשימה`);
       return;
     }

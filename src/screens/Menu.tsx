@@ -38,6 +38,8 @@ export default function MenuScreen() {
     if (!slot) return;
     slot.recipeIds = slot.recipeIds.filter((x) => x !== id);
     save(w);
+    const before = week;
+    toast(`הוסר מהתפריט: ${recipeMap.get(id)?.title ?? ''}`, () => save(structuredClone(before)));
   };
 
   return (

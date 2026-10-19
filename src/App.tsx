@@ -16,14 +16,34 @@ import SettingsScreen from './screens/Settings';
 import type { Member } from './lib/types';
 import { watchForUpdates } from './lib/update';
 
+const UNDO_MS = 8000;
+
 export default function App() {
   const [toast, setToast] = useState<ToastState | null>(null);
-  const onToast = useCallback((t: ToastState) => setToast(t), []);
+  // undoable actions: one big toast that gathers quick taps; 8 seconds from the last one
+  const [undos, setUndos] = useState<{ id: number; msg: string; undo: () => unknown }[]>([]);
+  const onToast = useCallback((t: ToastState) => {
+    const undo = t.undo;
+    if (undo) setUndos((u) => [...u, { id: t.id, msg: t.msg, undo }]);
+    else setToast(t);
+  }, []);
   useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(() => setToast(null), toast.undo ? 6000 : 3000);
+    const t = setTimeout(() => setToast(null), 3000);
     return () => clearTimeout(t);
   }, [toast]);
+  const lastUndo = undos[undos.length - 1]?.id;
+  useEffect(() => {
+    if (lastUndo === undefined) return;
+    const t = setTimeout(() => setUndos([]), UNDO_MS);
+    return () => clearTimeout(t);
+  }, [lastUndo]);
+  const undoAll = async () => {
+    const list = undos;
+    setUndos([]);
+    for (const u of [...list].reverse()) await u.undo();
+    setToast({ id: Date.now(), msg: list.length > 1 ? `${list.length} פעולות בוטלו` : 'בוטל' });
+  };
   const [update, setUpdate] = useState(false);
   useEffect(() => watchForUpdates(() => setUpdate(true)), []);
   return (
@@ -35,12 +55,17 @@ export default function App() {
           <button onClick={() => location.reload()}>לרענן</button>
         </div>
       )}
-      {toast && (
+      {undos.length > 0 ? (
+        <div className="toast undo-toast" role="status" key={lastUndo}>
+          <span className="undo-text">
+            {undos.length === 1 ? undos[0].msg : `${undos.length} פעולות: ${undos.map((u) => u.msg.replace(/^[^:]*:\s*/, '')).join(' · ')}`}
+          </span>
+          <button className="undo-btn" onClick={undoAll}>↩ {undos.length > 1 ? 'בטל הכול' : 'בטל'}</button>
+          <span className="undo-timer" style={{ animationDuration: `${UNDO_MS}ms` }} aria-hidden />
+        </div>
+      ) : toast && (
         <div className="toast" role="status">
           <span>{toast.msg}</span>
-          {toast.undo && (
-            <button onClick={() => { toast.undo?.(); setToast(null); }}>ביטול</button>
-          )}
         </div>
       )}
     </AppProvider>

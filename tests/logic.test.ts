@@ -5,7 +5,8 @@ import { DEFAULT_MEMBERS, demoData } from '../src/data/seed';
 import { weekIdOf } from '../src/lib/dates';
 import {
   addToPantry, buildList, bumpPantry, canAddToSlot, dinnerIdeas, kidsFavorites, kosherCompatible,
-  listPermissions, neededFromMenu, newShoppingItem, thawBanner, thawPlan, toggleVote, wishSummary,
+  listPermissions, neededFromMenu, newShoppingItem, thawBanner, coveredByPantry, doneRecord, onList, recentDone, restoredItem,
+  staleDone, undoPantry, thawPlan, toggleVote, wishSummary,
 } from '../src/lib/logic';
 import { canon, formatQty } from '../src/lib/units';
 import type { PantryItem, Recipe, Week } from '../src/lib/types';
@@ -103,6 +104,74 @@ describe('shopping list from menu', () => {
     expect(groups[0].aisle).toBe('ירקות ופירות');
     expect(groups.flatMap((g) => g.rows).some((r) => r.name === 'בננות')).toBe(true);
     expect(pending.map((p) => p.name)).toEqual(['במבה']);
+  });
+});
+
+describe('undo: recently bought / removed', () => {
+  const week = weekOf({ sun: { lunch: { recipeIds: ['bolognese'] } } });
+  const NOW = WED.getTime();
+
+  it('a removed manual item keeps its doc as history and stops blocking the menu row', () => {
+    const item = { id: 'x', ...newShoppingItem('ספגטי', 'mom', true, 1, 'חבילה') };
+    const rec = { id: 'x', ...doneRecord({ id: 'x', name: 'ספגטי', aisle: item.aisle, fromMenu: false, item }, 'removed', 'mom', {}, NOW) };
+    expect(rec).toMatchObject({ status: 'removed', doneAt: NOW, doneBy: 'mom', prevStatus: 'active', qty: 1 });
+    expect(onList(rec)).toBe(false);
+    expect(neededFromMenu(week, recipes, [], [rec]).some((n) => n.name === 'ספגטי')).toBe(true);
+    expect(buildList(week, recipes, [], [rec]).groups.flatMap((g) => g.rows).filter((r) => r.name === 'ספגטי')).toHaveLength(1);
+    expect({ id: 'x', ...restoredItem(rec) }).toEqual(item);
+  });
+
+  it('a rejected suggestion goes back to waiting for approval', () => {
+    const p = { id: 'k', ...newShoppingItem('במבה', 'kid1', false) };
+    const rec = { id: 'k', ...doneRecord(p, 'removed', 'mom', {}, NOW) };
+    expect(rec.prevStatus).toBe('pending');
+    expect(restoredItem(rec).status).toBe('pending');
+  });
+
+  it('a menu row records its key and week ("not needed") or its pantry move (bought)', () => {
+    const row = { id: `menu:${ingredientKey('בצל')}`, name: 'בצל', qty: 1, aisle: 'ירקות ופירות', fromMenu: true, recipes: ['ספגטי בולונז'] };
+    const skipped = doneRecord(row, 'removed', 'mom', { weekId: week.id }, NOW);
+    expect(skipped).toMatchObject({ status: 'removed', menuKey: ingredientKey('בצל'), weekId: week.id, recipes: ['ספגטי בולונז'] });
+    expect(skipped.prevStatus).toBeUndefined();
+    const bought = doneRecord(row, 'bought', 'mom', { weekId: week.id, pantry: { id: 'p1', created: true, qty: 1 } }, NOW);
+    expect(bought.weekId).toBeUndefined();
+    expect(bought.pantry).toEqual({ id: 'p1', created: true, qty: 1 });
+  });
+
+  it('only the last 24 hours, newest first, at most 20; a week-old one is cleaned up', () => {
+    const mk = (i: number, hoursAgo: number, status: 'bought' | 'removed' | 'active' = 'bought') => ({
+      id: `h${i}`, ...newShoppingItem(`פריט ${i}`, 'mom', true), status, doneAt: NOW - hoursAgo * 3600_000,
+    });
+    const items = [mk(1, 2), mk(2, 1, 'removed'), mk(3, 30), mk(4, 0.5, 'active'), mk(5, 200), ...Array.from({ length: 25 }, (_, i) => mk(10 + i, 3 + i / 10))];
+    const recent = recentDone(items, NOW);
+    expect(recent[0].id).toBe('h2');
+    expect(recent[1].id).toBe('h1');
+    expect(recent).toHaveLength(20);
+    expect(recent.some((r) => r.id === 'h3' || r.id === 'h4')).toBe(false);
+    expect(staleDone(items, NOW).map((r) => r.id)).toEqual(['h5']);
+  });
+
+  it('taking a purchase back out of the pantry', () => {
+    // new pantry item: removed
+    expect(undoPantry([pantryItem('חלב', 'fridge', 1, 'ליטר')], { id: 'חלב', created: true, qty: 1, unit: 'ליטר' })).toEqual({ remove: true });
+    // added on top of stock: subtract
+    const r = undoPantry([pantryItem('בצל', 'pantry', 5)], { id: 'בצל', created: false, qty: 2, prevQty: 3 }, 7);
+    expect(r).toEqual({ data: { name: 'בצל', location: 'pantry', qty: 3, updatedAt: 7 } });
+    // units changed by the purchase: put back what it said before
+    const r2 = undoPantry([pantryItem('אורז', 'pantry', 1, 'ק"ג')], { id: 'אורז', created: false, qty: 1, unit: 'ק"ג', prevQty: 2, prevUnit: 'כוס' }, 7);
+    expect(r2).toEqual({ data: { name: 'אורז', location: 'pantry', qty: 2, unit: 'כוס', updatedAt: 7 } });
+    // already used up / deleted: nothing to do
+    expect(undoPantry([], { id: 'x', created: true })).toBeNull();
+  });
+
+  it('rows hidden because the pantry has them are listed with what is at home', () => {
+    const pantry = [pantryItem('בצל', 'pantry', 5), pantryItem('בזיליקום', 'fridge')];
+    const covered = coveredByPantry(week, recipes, pantry);
+    expect(covered.map((c) => c.name)).toEqual(expect.arrayContaining(['בצל', 'בזיליקום']));
+    expect(covered.find((c) => c.name === 'בצל')).toMatchObject({ qty: 1, have: [pantry[0]] });
+    expect(neededFromMenu(week, recipes, pantry).some((n) => n.name === 'בצל')).toBe(false);
+    // skipped ones are not "at home", they're in the removed history
+    expect(coveredByPantry({ ...week, skipped: [ingredientKey('בצל')] }, recipes, pantry).some((c) => c.name === 'בצל')).toBe(false);
   });
 });
 

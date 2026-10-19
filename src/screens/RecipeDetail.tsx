@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Avatar, Chips, Empty, go, KosherBadge, RATING_FACES, RecipeThumb, Sheet, youtubeId, youtubeSearch, Ok } from '../components/ui';
 import { ingredientKey, isStaple } from '../data/catalog';
 import { DAY_NAMES, shiftWeek, weekIdOf, weekLabel } from '../lib/dates';
-import { avgRating, canAddToSlot, emptyWeek, haveAtHome, MEAL_NAMES, newShoppingItem, pantryIndex, weekDays } from '../lib/logic';
+import { avgRating, canAddToSlot, emptyWeek, haveAtHome, MEAL_NAMES, newShoppingItem, pantryIndex, weekDays, onList } from '../lib/logic';
 import type { MealType } from '../lib/types';
 import { formatQty } from '../lib/units';
 import { useApp } from '../state';
@@ -19,7 +19,7 @@ export default function RecipeDetail({ id }: { id: string }) {
 
   const idx = pantryIndex(pantry);
   const missing = r.ingredients.filter((i) => !isStaple(i.name) && !haveAtHome(i.name, idx));
-  const listed = new Set(shopping.map((s) => ingredientKey(s.name)));
+  const listed = new Set(shopping.filter(onList).map((s) => ingredientKey(s.name)));
   const avg = avgRating(r);
   const vid = youtubeId(r.videoUrl);
 
@@ -52,13 +52,14 @@ export default function RecipeDetail({ id }: { id: string }) {
   const reject = async () => {
     if (!confirm(`לדחות את ההצעה ${r.title}?`)) return;
     await store.remove(`recipes/${r.id}`);
-    toast('ההצעה נדחתה');
+    toast(`נדחתה ההצעה: ${r.title}`, () => store.set(`recipes/${r.id}`, r as unknown as Record<string, unknown>));
     history.back();
   };
 
   const del = async () => {
     if (!confirm(`למחוק את ${r.title}?`)) return;
     await store.remove(`recipes/${r.id}`);
+    toast(`נמחק: ${r.title}`, () => store.set(`recipes/${r.id}`, r as unknown as Record<string, unknown>));
     go('recipes');
   };
 

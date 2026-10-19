@@ -52,7 +52,7 @@ test('kid: home, voting and suggesting to the shopping list (no checking or dele
   // shopping: kids only suggest
   await page.getByRole('button', { name: /קניות/ }).click();
   await expect(page.getByRole('heading', { name: /רשימת קניות/ })).toBeVisible();
-  await expect(page.getByRole('button', { name: /^נקנה:/ })).toHaveCount(0);
+  await expect(page.getByRole('checkbox', { name: /^נקנה:/ })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /^למחוק/ })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'יש / לא צריך' })).toHaveCount(0);
   await page.getByLabel('פריט').fill('שוקו');
@@ -93,11 +93,11 @@ test('parent: build the menu from the kids wishes, approve, buy into the pantry'
   await expect(page.getByText('בקשות שמחכות לאישור')).toBeVisible();
   await page.getByRole('button', { name: 'לאשר במבה' }).click();
   await expect(page.getByText('בקשות שמחכות לאישור')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'נקנה: במבה' })).toBeVisible();
+  await expect(page.getByRole('checkbox', { name: 'נקנה: במבה' })).toBeVisible();
   await shot(page, '6-shopping-parent');
-  await page.getByRole('button', { name: 'נקנה: במבה' }).click();
-  await expect(page.getByRole('status')).toContainText('במבה עבר');
-  await expect(page.getByRole('button', { name: 'נקנה: במבה' })).toHaveCount(0);
+  await page.getByRole('checkbox', { name: 'נקנה: במבה' }).click();
+  await expect(page.getByRole('status')).toContainText('נקנה: במבה');
+  await expect(page.getByRole('checkbox', { name: 'נקנה: במבה' })).toHaveCount(0);
 
   await page.getByRole('button', { name: /מה יש בבית/ }).click();
   await expect(page.locator('.list-row', { hasText: 'במבה' })).toBeVisible();

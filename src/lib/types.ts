@@ -76,7 +76,8 @@ export interface Vote {
   updatedAt: number;
 }
 
-export type ShoppingStatus = 'pending' | 'active' | 'bought';
+/** 'bought' and 'removed' are history: shown under "recently bought / removed" with a restore button */
+export type ShoppingStatus = 'pending' | 'active' | 'bought' | 'removed';
 
 export interface ShoppingItem {
   id: string;
@@ -88,6 +89,17 @@ export interface ShoppingItem {
   addedBy: string; // memberId
   note?: string;
   createdAt: number;
+  // ---- history (status bought / removed) ----
+  doneAt?: number;
+  doneBy?: string; // memberId
+  /** status before it left the list ('active', or 'pending' for a rejected suggestion); absent for menu rows */
+  prevStatus?: 'active' | 'pending';
+  /** a row computed from the menu: its ingredient key, and the week whose "not needed" list it joined */
+  menuKey?: string;
+  weekId?: string;
+  recipes?: string[];
+  /** a purchase moved this into the pantry: enough to take it back out */
+  pantry?: { id: string; created: boolean; qty?: number; unit?: string; prevQty?: number; prevUnit?: string };
 }
 
 export interface PantryItem {
