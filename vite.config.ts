@@ -5,5 +5,6 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   base: process.env.BASE_PATH || '/',
   plugins: [react()],
+  build: { chunkSizeWarningLimit: 700 },
   test: { include: ['tests/**/*.test.ts'] },
 } as never);

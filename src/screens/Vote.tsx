@@ -1,0 +1,108 @@
+import { useMemo, useState } from 'react';
+import { Avatar, Chips, go, KosherBadge, RecipeThumb, Ok, X } from '../components/ui';
+import { weekLabel } from '../lib/dates';
+import { isKidFriendly, MAX_VOTES, toggleVote, votingWeekId } from '../lib/logic';
+import type { Vote } from '../lib/types';
+import { useApp } from '../state';
+
+type F = 'all' | 'kids' | 'special' | 'quick';
+
+export default function VoteScreen() {
+  const { me, votes, recipes, store, settings, toast } = useApp();
+  const weekId = votingWeekId();
+  const id = `${weekId}_${me?.id}`;
+  const mine: Vote = votes.find((v) => v.id === id) ?? { id, weekId, memberId: me!.id, recipeIds: [], wishes: [], updatedAt: 0 };
+  const [f, setF] = useState<F>('all');
+  const [q, setQ] = useState('');
+  const [wish, setWish] = useState('');
+  const others = votes.filter((v) => v.weekId === weekId && v.memberId !== me?.id);
+
+  const save = (v: Vote) => store.set(`votes/${v.id}`, { ...v, updatedAt: Date.now() } as unknown as Record<string, unknown>);
+
+  const list = useMemo(() => recipes
+    .filter((r) => f !== 'kids' || isKidFriendly(r, settings?.members ?? []))
+    .filter((r) => f !== 'special' || r.tags.includes('מיוחד'))
+    .filter((r) => f !== 'quick' || r.minutes <= 30)
+    .filter((r) => !q.trim() || r.title.includes(q.trim()) || r.cuisine.includes(q.trim()))
+    .sort((a, b) => a.title.localeCompare(b.title, 'he')), [recipes, f, q, settings?.members]);
+
+  const toggle = (rid: string) => {
+    const next = toggleVote(mine.recipeIds, rid);
+    if (next === mine.recipeIds) {
+      toast(`אפשר לבחור עד ${MAX_VOTES} מנות. כדי להוסיף, צריך להוריד אחת.`);
+      return;
+    }
+    save({ ...mine, recipeIds: next });
+  };
+
+  const addWish = () => {
+    const t = wish.trim();
+    if (!t) return;
+    save({ ...mine, wishes: [...mine.wishes, t] });
+    setWish('');
+    toast('המשאלה נשלחה להורים 💌');
+  };
+
+  return (
+    <div className="stack">
+      <div className="vote-head">
+        <h1>🗳️ מה בא לך ל{weekLabel(weekId)}?</h1>
+        <p className="muted">בוחרים עד {MAX_VOTES} מנות. ההורים רואים את הבחירות ומכניסים לתפריט.</p>
+        <div className="vote-count" aria-live="polite">
+          {Array.from({ length: MAX_VOTES }).map((_, i) => (
+            <span key={i} className={i < mine.recipeIds.length ? 'on' : ''}>{i < mine.recipeIds.length ? '❤️' : '🤍'}</span>
+          ))}
+          <span className="muted small">{mine.recipeIds.length}/{MAX_VOTES}</span>
+        </div>
+      </div>
+
+      <section className="card soft-butter">
+        <h2>💌 משהו שאין ברשימה?</h2>
+        <div className="add-row">
+          <input className="input" placeholder="למשל: ראמן, פנקייק, קציצות דגים…" value={wish}
+            onChange={(e) => setWish(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addWish()} />
+          <button className="btn" onClick={addWish}>שליחה</button>
+        </div>
+        {mine.wishes.length > 0 && (
+          <div className="wish-chips">
+            {mine.wishes.map((w, i) => (
+              <span key={i} className="wish free">
+                “{w}”
+                <button className="x" aria-label="הסרה" onClick={() => save({ ...mine, wishes: mine.wishes.filter((_, j) => j !== i) })}><X /></button>
+              </span>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <input className="input" placeholder="חיפוש…" value={q} onChange={(e) => setQ(e.target.value)} />
+      <Chips<F> value={f} onChange={setF} label="סינון" options={[
+        { v: 'all', label: 'הכול' }, { v: 'kids', label: '👧 ילדים אוהבים' }, { v: 'special', label: '✨ מיוחד' }, { v: 'quick', label: '⚡ מהיר' },
+      ]} />
+
+      <div className="vote-grid">
+        {list.map((r) => {
+          const on = mine.recipeIds.includes(r.id);
+          const by = others.filter((v) => v.recipeIds.includes(r.id));
+          return (
+            <button key={r.id} className={`vote-card ${on ? 'on' : ''}`} onClick={() => toggle(r.id)} aria-pressed={on}>
+              <RecipeThumb recipe={r} />
+              <span className="vote-heart">{on ? '❤️' : '🤍'}</span>
+              <span className="vote-title">{r.title}</span>
+              <span className="vote-meta"><KosherBadge k={r.kosher} /> {r.cuisine}</span>
+              {by.length > 0 && (
+                <span className="vote-others">
+                  {by.map((v) => {
+                    const m = settings?.members.find((x) => x.id === v.memberId);
+                    return m ? <Avatar key={v.id} m={m} size={22} /> : null;
+                  })}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+      <button className="btn ghost" onClick={() => go('home')}>סיימתי <Ok /></button>
+    </div>
+  );
+}

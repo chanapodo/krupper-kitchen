@@ -1,0 +1,81 @@
+rules_version = '2';
+
+// בישולי קרופרז — everyone signs in anonymously from the shared link.
+// Parents are devices that unlocked parent mode with the family PIN:
+// they have a doc at families/{fid}/parents/{uid}, which the rules only accept
+// when its hash equals the (unreadable) PIN hash.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /families/{fid} {
+      function signedIn() { return request.auth != null; }
+      function isParent() {
+        return signedIn()
+          && exists(/databases/$(database)/documents/families/$(fid)/parents/$(request.auth.uid));
+      }
+      function pinHash() {
+        return getAfter(/databases/$(database)/documents/families/$(fid)/private/pin).data.hash;
+      }
+      function changed() { return request.resource.data.diff(resource.data).affectedKeys(); }
+
+      // settings, thaw plan
+      match /meta/{docId} {
+        allow read: if signedIn();
+        allow write: if isParent();
+      }
+
+      // the PIN hash: nobody reads it; set once, then only a parent changes it
+      match /private/{docId} {
+        allow read: if false;
+        allow create: if signedIn() && docId == 'pin'
+          && request.resource.data.keys().hasOnly(['hash'])
+          && request.resource.data.hash is string;
+        allow update: if isParent() && docId == 'pin';
+        allow delete: if false;
+      }
+
+      // parent devices
+      match /parents/{uid} {
+        allow get: if signedIn() && request.auth.uid == uid;
+        allow list: if false;
+        allow create, update: if signedIn() && request.auth.uid == uid
+          && request.resource.data.hash == pinHash();
+        allow delete: if signedIn() && (request.auth.uid == uid || isParent());
+      }
+
+      // recipes: anyone may add one and rate; only parents edit or delete
+      match /recipes/{id} {
+        allow read: if signedIn();
+        allow create: if signedIn() && request.resource.data.title is string;
+        allow update: if isParent() || (signedIn() && changed().hasOnly(['ratings']));
+        allow delete: if isParent();
+      }
+
+      // weekly menus: parents only
+      match /weeks/{id} {
+        allow read: if signedIn();
+        allow write: if isParent();
+      }
+
+      // kids' votes for the week ahead
+      match /votes/{id} {
+        allow read: if signedIn();
+        allow create, update: if signedIn()
+          && id == request.resource.data.weekId + '_' + request.resource.data.memberId;
+        allow delete: if isParent();
+      }
+
+      // shopping list: kids may only add suggestions waiting for approval
+      match /shopping/{id} {
+        allow read: if signedIn();
+        allow create: if isParent() || (signedIn() && request.resource.data.status == 'pending');
+        allow update, delete: if isParent();
+      }
+
+      // pantry: parents manage it
+      match /pantry/{id} {
+        allow read: if signedIn();
+        allow write: if isParent();
+      }
+    }
+  }
+}
