@@ -50,7 +50,7 @@ service cloud.firestore {
         allow delete: if isParent();
       }
 
-      // weekly menus: parents only
+      // weekly menus: parents only (a kid's dish is a request, below)
       match /weeks/{id} {
         allow read: if signedIn();
         allow write: if isParent();
@@ -64,17 +64,53 @@ service cloud.firestore {
         allow delete: if isParent();
       }
 
-      // shopping list: kids may only add suggestions waiting for approval
+      // shopping list: everyone adds and ticks "bought"; only parents remove
+      // (a kid's removal is a request). A kid may delete a doc they created
+      // themselves, to undo their own add or tick.
       match /shopping/{id} {
         allow read: if signedIn();
-        allow create: if isParent() || (signedIn() && request.resource.data.status == 'pending');
-        allow update, delete: if isParent();
+        allow create: if isParent() || (signedIn()
+          && request.resource.data.status in ['active', 'pending', 'bought']
+          && request.resource.data.uid == request.auth.uid);
+        allow update: if isParent() || (signedIn()
+          && resource.data.status in ['active', 'bought']
+          && request.resource.data.status in ['active', 'bought']);
+        allow delete: if isParent() || (signedIn() && resource.data.uid == request.auth.uid);
       }
 
-      // pantry: parents manage it
+      // pantry: everyone adds and updates amounts; only parents move, rename,
+      // switch modes or remove. A kid may delete an item they created themselves (undo).
       match /pantry/{id} {
         allow read: if signedIn();
-        allow write: if isParent();
+        allow create: if isParent() || (signedIn()
+          && request.resource.data.name is string
+          && request.resource.data.uid == request.auth.uid);
+        allow update: if isParent() || (signedIn()
+          && changed().hasOnly(['qty', 'unit', 'level', 'mode', 'updatedAt', 'updatedBy']));
+        allow delete: if isParent() || (signedIn() && resource.data.uid == request.auth.uid);
+      }
+
+      // notices for the parents ("גפן הוסיפה מילקי"): anyone writes one;
+      // its writer may only mark it undone; parents mark it read
+      match /notices/{id} {
+        allow read: if signedIn();
+        allow create: if signedIn() && request.resource.data.text is string
+          && !('readBy' in request.resource.data);
+        allow update: if isParent() || (signedIn() && changed().hasOnly(['undone']));
+        allow delete: if isParent();
+      }
+
+      // kids' requests (a dish for the menu, removing a list item): created waiting,
+      // decided by parents; the kid who asked may cancel while it waits
+      match /requests/{id} {
+        allow read: if signedIn();
+        allow create: if signedIn() && request.resource.data.status == 'pending';
+        allow update: if isParent() || (signedIn()
+          && resource.data.status == 'pending'
+          && request.resource.data.status == 'cancelled'
+          && changed().hasOnly(['status'])
+          && resource.data.uid == request.auth.uid);
+        allow delete: if isParent();
       }
     }
   }

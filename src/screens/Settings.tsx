@@ -90,13 +90,23 @@ export default function SettingsScreen() {
                 <select className="input mini" value={m.emoji} onChange={(e) => setMember(m.id, { emoji: e.target.value })} aria-label="אימוג׳י">
                   {[...new Set([m.emoji, ...EMOJIS])].map((e) => <option key={e} value={e}>{e}</option>)}
                 </select>
-                <span className="muted small">{m.role === 'parent' ? 'הורה' : 'ילד/ה'}</span>
+                {m.role === 'kid' ? (
+                  <select className="input mini" value={m.gender ?? ''} aria-label={`בן או בת: ${m.name}`}
+                    onChange={(e) => setMember(m.id, { gender: (e.target.value || undefined) as Member['gender'] })}>
+                    <option value="">בן/בת?</option>
+                    <option value="m">בן</option>
+                    <option value="f">בת</option>
+                  </select>
+                ) : <span className="muted small">הורה</span>}
                 {m.role === 'kid' && s.members.filter((x) => x.role === 'kid').length > 1 && (
                   <button className="icon-btn small" aria-label={`להסיר את ${m.name}`} onClick={() => setDraft({ ...s, members: s.members.filter((x) => x.id !== m.id) })}><X /></button>
                 )}
               </div>
             ))}
             <button className="link" onClick={addKid}>+ להוסיף ילד/ה</button>
+            {s.members.some((m) => m.role === 'kid' && !m.gender) && (
+              <p className="muted small">בוחרים ״בן״ או ״בת״ כדי שההתראות יהיו בלשון הנכונה (״נעם הוסיף״, ״גפן הוסיפה״).</p>
+            )}
             <label className="check-line">
               <input type="checkbox" checked={s.shabbat} onChange={(e) => setDraft({ ...s, shabbat: e.target.checked })} /> להציג גם שבת בתפריט
             </label>

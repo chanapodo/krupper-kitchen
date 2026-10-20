@@ -1,7 +1,9 @@
 import { FIREBASE } from '../config';
-import { MOCK_AI } from '../data/mockAi';
-import { draftFromAi, DraftError, extractJson, knowledgePrompt, linkPrompt } from './recipeDraft';
-import type { Recipe } from './types';
+import { MOCK_AI, MOCK_RECEIPT } from '../data/mockAi';
+import { cleanUrl } from './links';
+import { linesFromAi, receiptPrompt, type ReceiptLine } from './receipt';
+import { draftFromAi, DraftError, extractJson, imagePrompt, knowledgePrompt, linkPrompt, textPrompt } from './recipeDraft';
+import type { PantryItem, Recipe } from './types';
 
 /**
  * Recipe finding through Firebase AI Logic (Gemini Developer API backend):
@@ -22,7 +24,7 @@ export type QuotaKind = 'minute' | 'day';
 export class AiError extends Error {
   /** short technical line (status, quota, model) shown small under the message, for diagnosing from a screenshot */
   detail = '';
-  constructor(public kind: 'not-enabled' | 'quota' | 'timeout' | 'no-recipe' | 'offline' | 'other', message: string) {
+  constructor(public kind: 'not-enabled' | 'quota' | 'timeout' | 'no-recipe' | 'blocked' | 'no-receipt' | 'offline' | 'other', message: string) {
     super(message);
   }
 }
@@ -31,6 +33,8 @@ const MESSAGES: Record<Exclude<AiError['kind'], 'quota'>, string> = {
   'not-enabled': 'החיפוש החכם עוד לא הופעל בפרויקט (Firebase AI Logic). אפשר בינתיים להוסיף את המנה רק בשם.',
   timeout: 'זה לקח יותר מדי זמן (האתר כבד או שהשירות עמוס). נסו שוב בעוד רגע, או הוסיפו רק בשם.',
   'no-recipe': 'לא הצלחתי למצוא מתכון מסודר. נסו שם אחר, קישור, או הוסיפו רק בשם.',
+  blocked: 'האתר הזה לא מאפשר לקרוא ממנו מתכונים אוטומטית. אפשר להעתיק ולהדביק את טקסט המתכון, או לצלם מסך של המתכון.',
+  'no-receipt': 'לא הצלחתי לקרוא מוצרים מהקבלה. נסו צילום חד וישר יותר, עם כל הקבלה בתמונה.',
   offline: 'אין חיבור לאינטרנט כרגע. נסו שוב כשיש קליטה.',
   other: 'משהו השתבש בחיפוש. נסו שוב, או הוסיפו רק בשם.',
 };
@@ -115,9 +119,21 @@ function toAiError(e: unknown): AiError {
   return new AiError('other', MESSAGES.other);
 }
 
-type Part = { text: string } | { fileData: { mimeType: string; fileUri: string } };
+type Part = { text: string } | { fileData: { mimeType: string; fileUri: string } } | { inlineData: { mimeType: string; data: string } };
 
-async function generate(parts: Part[], tools: 'url'[] = []): Promise<string> {
+/** An image or PDF for the model, base64 without the data: prefix. */
+export interface InlineFile {
+  mimeType: string;
+  data: string;
+}
+
+interface Reply {
+  text: string;
+  /** URL context: did the link open? (e.g. URL_RETRIEVAL_STATUS_ERROR when the site blocks it) */
+  urlStatus?: string[];
+}
+
+async function generate(parts: Part[], tools: 'url'[] = []): Promise<Reply> {
   const [{ getApp }, ai] = await Promise.all([import('firebase/app'), import('firebase/ai')]);
   const inst = ai.getAI(getApp(), { backend: new ai.GoogleAIBackend() });
   const toolDefs = tools.map(() => ({ urlContext: {} }));
@@ -134,7 +150,8 @@ async function generate(parts: Part[], tools: 'url'[] = []): Promise<string> {
         m.generateContent(parts as never, { signal: ctrl.signal, timeout: left }),
         new Promise<never>((_, reject) => ctrl.signal.addEventListener('abort', () => reject(new AiError('timeout', MESSAGES.timeout)))),
       ]);
-      return res.response.text();
+      const meta = (res.response.candidates?.[0] as { urlContextMetadata?: { urlMetadata?: { urlRetrievalStatus?: string }[] } } | undefined)?.urlContextMetadata;
+      return { text: res.response.text(), urlStatus: meta?.urlMetadata?.map((u) => u.urlRetrievalStatus ?? '') };
     } catch (e) {
       if (ctrl.signal.aborted) {
         const t = new AiError('timeout', MESSAGES.timeout);
@@ -163,13 +180,13 @@ export interface FindOpts {
 
 export interface FoundRecipe {
   recipe: Recipe;
-  /** 'ai' = written by the model from what it knows; 'link' = read from the given link */
-  via: 'ai' | 'link';
+  /** 'ai' = written by the model from what it knows; 'link' / 'text' / 'image' = read from what was given */
+  via: 'ai' | 'link' | 'text' | 'image';
 }
 
 export async function findRecipe(dish: string, opts: FindOpts = {}): Promise<FoundRecipe> {
   try {
-    const text = FIREBASE ? await generate([{ text: knowledgePrompt(dish) }]) : await mockReply(dish);
+    const text = FIREBASE ? (await generate([{ text: knowledgePrompt(dish) }])).text : await mockReply(dish);
     const recipe = draftFromAi(extractJson(text), { fallbackName: dish, known: opts.known });
     delete recipe.sources;
     delete recipe.link;
@@ -179,22 +196,85 @@ export async function findRecipe(dish: string, opts: FindOpts = {}): Promise<Fou
   }
 }
 
-export async function recipeFromLink(url: string, opts: FindOpts = {}): Promise<FoundRecipe> {
+export async function recipeFromLink(rawUrl: string, opts: FindOpts = {}): Promise<FoundRecipe> {
+  const url = cleanUrl(rawUrl);
+  let reply: Reply | undefined;
   try {
-    let text: string;
     if (!FIREBASE) {
-      text = await mockReply(url);
+      reply = { text: await mockReply(url) };
     } else if (/youtu\.?be/.test(url)) {
       // Gemini watches public YouTube videos directly
-      text = await generate([{ fileData: { mimeType: 'video/*', fileUri: url } }, { text: linkPrompt(url) }]);
+      reply = await generate([{ fileData: { mimeType: 'video/*', fileUri: url } }, { text: linkPrompt(url) }]);
     } else {
       // URL context reads the page; no search fallback (no free quota for it)
-      text = await generate([{ text: linkPrompt(url) }], ['url']);
+      reply = await generate([{ text: linkPrompt(url) }], ['url']);
     }
-    return { recipe: draftFromAi(extractJson(text), { fallbackName: '', known: opts.known, link: url }), via: 'link' };
+    return { recipe: draftFromAi(extractJson(reply.text), { fallbackName: '', known: opts.known, link: url }), via: 'link' };
+  } catch (e) {
+    // the site refused Google's reader (robots.txt blocks "Google-Extended", e.g. foodsdictionary.co.il)
+    if (e instanceof DraftError && reply?.urlStatus?.some((s) => s && s !== 'URL_RETRIEVAL_STATUS_SUCCESS')) {
+      const b = new AiError('blocked', MESSAGES.blocked);
+      b.detail = `url context: ${reply.urlStatus.join(', ')} · ${hostOf(url)}`;
+      throw b;
+    }
+    throw classify(e);
+  }
+}
+
+/** A recipe pasted as text (from a site that can't be read automatically, a message, a note). */
+export async function recipeFromText(pasted: string, opts: FindOpts = {}): Promise<FoundRecipe> {
+  try {
+    const text = FIREBASE ? (await generate([{ text: textPrompt(pasted) }])).text : await mockReply(pasted);
+    const recipe = draftFromAi(extractJson(text), { fallbackName: '', known: opts.known });
+    delete recipe.sources;
+    delete recipe.link;
+    return { recipe, via: 'text' };
   } catch (e) {
     throw classify(e);
   }
+}
+
+/** A photo or screenshot of a recipe (a cookbook page, a screenshot of a site or a post). */
+export async function recipeFromImage(file: InlineFile, opts: FindOpts = {}): Promise<FoundRecipe> {
+  try {
+    const text = FIREBASE ? (await generate([{ inlineData: file }, { text: imagePrompt() }])).text : await mockReply('צילום');
+    const recipe = draftFromAi(extractJson(text), { fallbackName: '', known: opts.known });
+    delete recipe.sources;
+    delete recipe.link;
+    return { recipe, via: 'image' };
+  } catch (e) {
+    throw classify(e);
+  }
+}
+
+/** Read a supermarket receipt (photo or PDF) into review lines. Inline data only, never search. */
+export async function readReceipt(file: InlineFile, opts: { known?: string[]; pantry?: PantryItem[] } = {}): Promise<ReceiptLine[]> {
+  try {
+    const text = FIREBASE ? (await generate([{ inlineData: file }, { text: receiptPrompt() }])).text : await mockReceipt();
+    const lines = linesFromAi(text, opts);
+    if (!lines.length) throw new AiError('no-receipt', MESSAGES['no-receipt']);
+    return lines;
+  } catch (e) {
+    if (e instanceof DraftError) {
+      const r = new AiError('no-receipt', MESSAGES['no-receipt']);
+      r.detail = `receipt: ${e.message}`;
+      throw r;
+    }
+    throw classify(e);
+  }
+}
+
+function hostOf(u: string): string {
+  try {
+    return new URL(u).hostname.replace(/^www\./, '');
+  } catch {
+    return u;
+  }
+}
+
+async function mockReceipt(): Promise<string> {
+  await new Promise((r) => setTimeout(r, 700));
+  return JSON.stringify(MOCK_RECEIPT);
 }
 
 async function mockReply(q: string): Promise<string> {

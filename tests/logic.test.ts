@@ -78,7 +78,7 @@ describe('shopping list from menu', () => {
 
   it('subtracts pantry stock', () => {
     const need = neededFromMenu(week, recipes, [
-      pantryItem('בשר טחון', 'freezer', 600, 'גרם'),
+      { ...pantryItem('בשר טחון', 'freezer', 600, 'גרם'), mode: 'count' },
       pantryItem('בצל', 'pantry', 5),
       pantryItem('בזיליקום', 'fridge'),
     ]);
@@ -95,9 +95,18 @@ describe('shopping list from menu', () => {
     expect(need.find((n) => n.name === 'ספגטי')).toBeUndefined();
   });
 
-  it('groups by aisle in store order and keeps pending apart', () => {
+  it('level items count as there unless "נגמר"; count items at 0 are missing', () => {
+    const lvl = (level: PantryItem['level']) => ({ ...pantryItem('בשר טחון', 'freezer'), mode: 'level' as const, level });
+    for (const l of ['full', 'half', 'low'] as const) expect(neededFromMenu(week, recipes, [lvl(l)]).some((n) => n.name === 'בשר טחון')).toBe(false);
+    expect(neededFromMenu(week, recipes, [lvl('out')]).some((n) => n.name === 'בשר טחון')).toBe(true);
+    // an old doc with grams and no mode: the catalog says meat is kept by level, so it counts as there
+    expect(neededFromMenu(week, recipes, [pantryItem('בשר טחון', 'freezer', 100, 'גרם')]).some((n) => n.name === 'בשר טחון')).toBe(false);
+    expect(neededFromMenu(week, recipes, [{ ...pantryItem('בצל', 'pantry', 0), mode: 'count' }]).some((n) => n.name === 'בצל')).toBe(true);
+  });
+
+  it('groups by aisle in store order and keeps (older) pending suggestions apart', () => {
     const items = [
-      { id: 'a', ...newShoppingItem('במבה', 'kid1', false) },
+      { id: 'a', ...newShoppingItem('במבה', 'kid1', false), status: 'pending' as const },
       { id: 'b', ...newShoppingItem('בננות', 'mom', true) },
     ];
     const { groups, pending } = buildList(week, recipes, [], items);
@@ -122,7 +131,7 @@ describe('undo: recently bought / removed', () => {
   });
 
   it('a rejected suggestion goes back to waiting for approval', () => {
-    const p = { id: 'k', ...newShoppingItem('במבה', 'kid1', false) };
+    const p = { id: 'k', ...newShoppingItem('במבה', 'kid1', false), status: 'pending' as const };
     const rec = { id: 'k', ...doneRecord(p, 'removed', 'mom', {}, NOW) };
     expect(rec.prevStatus).toBe('pending');
     expect(restoredItem(rec).status).toBe('pending');
@@ -176,31 +185,40 @@ describe('undo: recently bought / removed', () => {
 });
 
 describe('kids and the shopping list', () => {
-  it('kids can only suggest; parents decide', () => {
-    expect(listPermissions(false)).toMatchObject({ check: false, remove: false, approve: false, addStatus: 'pending' });
-    expect(listPermissions(true)).toMatchObject({ check: true, remove: true, approve: true, addStatus: 'active' });
-    expect(newShoppingItem('במבה', 'kid2', false).status).toBe('pending');
+  it('kids add and tick; their removals are requests a parent approves', () => {
+    expect(listPermissions(false)).toMatchObject({ check: true, remove: false, requestRemove: true, approve: false, addStatus: 'active' });
+    expect(listPermissions(true)).toMatchObject({ check: true, remove: true, requestRemove: false, approve: true, addStatus: 'active' });
+    expect(newShoppingItem('במבה', 'kid2', false).status).toBe('active');
     expect(newShoppingItem('במבה', 'mom', true).status).toBe('active');
   });
 });
 
 describe('pantry', () => {
-  it('buying merges into an existing pantry item', () => {
-    const pantry = [pantryItem('בשר טחון', 'freezer', 500, 'גרם')];
+  it('buying merges into an existing pantry item, keeping its other fields', () => {
+    const pantry = [{ ...pantryItem('בשר טחון', 'freezer', 500, 'גרם'), mode: 'count' as const, uid: 'u1' }];
     const res = addToPantry(pantry, { name: 'בשר טחון', qty: 1, unit: 'ק"ג' }, 1);
     expect(res.id).toBe('בשר טחון');
-    expect(res.data.qty).toBe(1500);
+    expect(res.data).toMatchObject({ qty: 1500, uid: 'u1', location: 'freezer', mode: 'count' });
+  });
+  it('buying a level item puts it back to "מלא" (old quantity kept on the doc)', () => {
+    const res = addToPantry([{ ...pantryItem('שמן קנולה', 'pantry', 1), level: 'low' }], { name: 'שמן', qty: 2 }, 1);
+    expect(res.data).toMatchObject({ mode: 'level', level: 'full', qty: 1 });
+    expect(addToPantry([], { name: 'סבון כלים' }).data).toMatchObject({ mode: 'level', level: 'full', location: 'home' });
+    expect(addToPantry([], { name: 'יוגורט', qty: 4, unit: 'יח׳' }).data).toMatchObject({ mode: 'count', qty: 4 });
+    // after running out, an unknown amount is simply "יש"
+    expect(addToPantry([{ ...pantryItem('ביצים', 'fridge', 0), mode: 'count' }], { name: 'ביצים' }).data.qty).toBeUndefined();
   });
   it('buying something new goes to its usual place', () => {
     expect(addToPantry([], { name: 'חזה עוף', qty: 700, unit: 'גרם' }).data.location).toBe('freezer');
     expect(addToPantry([], { name: 'יוגורט' }).data.location).toBe('fridge');
     expect(addToPantry([], { name: 'משהו חדש' }).data.location).toBe('pantry');
   });
-  it('+/- steps and removal', () => {
-    expect(bumpPantry(pantryItem('ביצים', 'fridge', 1), -1)).toBeNull();
+  it('+/- steps stop at 0 ("נגמר" stays visible)', () => {
+    expect(bumpPantry(pantryItem('ביצים', 'fridge', 1), -1)).toBe(0);
+    expect(bumpPantry(pantryItem('ביצים', 'fridge', 0), -1)).toBe(0);
     expect(bumpPantry(pantryItem('ביצים', 'fridge', 2), 1)).toBe(3);
-    expect(bumpPantry(pantryItem('שום', 'pantry'), -1)).toBeNull();
-    expect(bumpPantry(pantryItem('אורז', 'pantry', 1000, 'גרם'), -1)).toBe(750);
+    expect(bumpPantry(pantryItem('פיתות', 'pantry'), -1)).toBe(0);
+    expect(bumpPantry(pantryItem('פיתות', 'pantry'), 1)).toBe(1);
   });
 });
 

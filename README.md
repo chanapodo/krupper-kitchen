@@ -68,3 +68,13 @@ AI runs in the browser through **Firebase AI Logic** (`firebase/ai`, Gemini Deve
 - No retries on the same model; everything gives up after 45 s with a Hebrew "took too long" message.
 - A 429 says whether the per-minute limit (try again in a minute) or the daily one (resets at midnight Pacific, ~10:00 Israel time) was hit, from the error's QuotaFailure/RetryInfo details.
 - Demo mode answers from `src/data/mockAi.ts`. E2E tests run with `/?demo`.
+
+## v1.3: kids' permissions, notices, receipts, pantry levels
+
+- **Kids** add to the shopping list, the pantry and the recipe bank with no approval, and tick "bought". The parents get an in-app notice (`notices/{id}`: text, kind, by, at, `readBy.{memberId}`, `undone`). Hebrew verbs follow `Member.gender` (`'m' | 'f'`, set in Settings).
+- **Requests** (`requests/{id}`): a kid's dish in a menu slot (`menu-add`, shown as "ממתין לאישור") and a kid's removal from the list (`shop-remove`). Parents approve or reject from the bell, the pop-up on open, or inline; a decision can be reversed for a week (`resultId` points at the history doc).
+- **Pantry quantities**: `mode: 'count' | 'level'`, `level: 'full' | 'half' | 'low' | 'out'`. Defaults per catalog item (`CatalogItem.mode`). Level items count as at home unless "out"; "low"/"out" (or a count of 0) puts the item on the list (undoable). Docs from before v1.3 get `mode`/`level` once from a parent's device; `qty`/`unit` are never removed. Removed items keep `removedAt` for a week; deleted recipes for 30 days.
+- **Receipts**: photo or PDF → Gemini (inline data, flash-lite first, no search) → review screen → pantry; list items on the receipt are marked bought (history + undo). Deposit/bag/discount lines are skipped (`src/lib/receipt.ts`).
+- **Links**: `cleanUrl()` unwraps `google.com/url?q=` and strips `&sa=U&ved=…&usg=…` (even glued to the path), utm, fbclid. Sites whose robots.txt blocks `Google-Extended` (e.g. foodsdictionary.co.il) can't be read by URL context; the app says so and offers pasting the text or a screenshot.
+- **Rules**: `firestore.rules` changed in v1.3; until they are re-published, parents see "צריך לעדכן את חוקי האבטחה". Test them locally (never against the live project):
+  `npx firebase emulators:exec --config firebase.rules-test.json --only firestore --project demo-krupper "node rules-test/check-rules.mjs"` (needs Java).

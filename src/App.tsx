@@ -13,14 +13,17 @@ import RecipeDetail from './screens/RecipeDetail';
 import RecipeEdit from './screens/RecipeEdit';
 import IdeasScreen from './screens/Ideas';
 import SettingsScreen from './screens/Settings';
+import BellScreen, { ApprovalList, RulesBanner } from './screens/Bell';
+import { Sheet } from './components/ui';
+import { pendingRequests, unreadNotices } from './lib/logic';
 import type { Member } from './lib/types';
 import { watchForUpdates } from './lib/update';
 
-const UNDO_MS = 8000;
+const UNDO_MS = 5000;
 
 export default function App() {
   const [toast, setToast] = useState<ToastState | null>(null);
-  // undoable actions: one big toast that gathers quick taps; 8 seconds from the last one
+  // undoable actions: one big toast that gathers quick taps; 5 seconds from the last one
   const [undos, setUndos] = useState<{ id: number; msg: string; undo: () => unknown }[]>([]);
   const onToast = useCallback((t: ToastState) => {
     const undo = t.undo;
@@ -46,6 +49,12 @@ export default function App() {
   };
   const [update, setUpdate] = useState(false);
   useEffect(() => watchForUpdates(() => setUpdate(true)), []);
+  // switching user: the last person's undo must not be offered to the next one
+  useEffect(() => {
+    const clear = () => setUndos([]);
+    window.addEventListener('kk-user-changed', clear);
+    return () => window.removeEventListener('kk-user-changed', clear);
+  }, []);
   return (
     <AppProvider onToast={onToast}>
       <Shell />
@@ -73,13 +82,21 @@ export default function App() {
 }
 
 function Shell() {
-  const { settings, me, isParent, shopping, store } = useApp();
+  const { settings, me, isParent, shopping, store, notices, requests, rulesOutdated } = useApp();
   const route = useRoute();
+  // approvals pop up for a parent when the app opens (and when new ones arrive); "later" hides these ones
+  const [seen, setSeen] = useState<Set<string>>(() => new Set());
+  const waiting = isParent ? pendingRequests(requests) : [];
+  const popup = waiting.filter((r) => !seen.has(r.id));
+  useEffect(() => {
+    window.dispatchEvent(new Event('kk-user-changed'));
+  }, [me?.id, isParent]);
 
   if (!settings) return <FirstSetup />;
   if (!me) return <WhoAreYou />;
 
   const pending = shopping.filter((s) => s.status === 'pending').length;
+  const unread = isParent ? unreadNotices(notices, me.id).length : 0;
   const tab = route[0];
   const screen = (() => {
     switch (tab) {
@@ -92,6 +109,7 @@ function Shell() {
       case 'edit': return <RecipeEdit id={route[1]} name={route[2] ? decodeURIComponent(route[2]) : undefined} />;
       case 'ideas': return <IdeasScreen />;
       case 'settings': return <SettingsScreen />;
+      case 'bell': return <BellScreen />;
       default: return <Home />;
     }
   })();
@@ -113,12 +131,31 @@ function Shell() {
           <span className="brand-name">{settings.familyName}</span>
         </button>
         {store.mode === 'demo' && <span className="demo-pill">דמו</span>}
+        {isParent && (
+          <button className="bell-btn" onClick={() => go('bell')}
+            aria-label={`התראות${unread + waiting.length ? `: ${unread} חדשות, ${waiting.length} מחכות לאישור` : ''}`}>
+            <span aria-hidden>🔔</span>
+            {unread + waiting.length > 0 && <span className="bell-badge">{unread + waiting.length}</span>}
+          </button>
+        )}
         <button className="me-btn" onClick={() => go('settings')} aria-label="הגדרות והחלפת משתמש">
           {isParent && <span className="parent-pill">הורה</span>}
           <Avatar m={me} size={38} />
         </button>
       </header>
-      <main className="content">{screen}</main>
+      <main className="content">
+        {isParent && rulesOutdated && tab !== 'bell' && <RulesBanner />}
+        {screen}
+      </main>
+      {popup.length > 0 && tab !== 'bell' && (
+        <Sheet title="🙋 מחכה לאישור שלך" onClose={() => setSeen(new Set([...seen, ...popup.map((r) => r.id)]))}>
+          <ApprovalList items={waiting} />
+          <div className="action-row">
+            <button className="btn ghost" onClick={() => setSeen(new Set([...seen, ...popup.map((r) => r.id)]))}>אחר כך</button>
+            <button className="link" onClick={() => { setSeen(new Set([...seen, ...popup.map((r) => r.id)])); go('bell'); }}>לכל ההתראות ←</button>
+          </div>
+        </Sheet>
+      )}
       <nav className="tabbar" aria-label="ניווט">
         {nav.map((n) => (
           <button key={n.id} className={`tab ${activeTab === n.id ? 'on' : ''}`} onClick={() => go(n.id)}

@@ -1,7 +1,8 @@
 export type Kosher = 'meat' | 'dairy' | 'parve';
 export type MealType = 'lunch' | 'dinner';
 export type Role = 'parent' | 'kid';
-export type Location = 'fridge' | 'freezer' | 'pantry';
+/** 'home' = cleaning & personal care (ניקיון וטיפוח) */
+export type Location = 'fridge' | 'freezer' | 'pantry' | 'home';
 export type DayKey = 'sun' | 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat';
 
 export interface Member {
@@ -10,6 +11,8 @@ export interface Member {
   role: Role;
   emoji: string;
   color: string;
+  /** for Hebrew verbs in notices ("נעם הוסיף", "גפן הוסיפה") */
+  gender?: 'm' | 'f';
 }
 
 export interface Settings {
@@ -53,6 +56,8 @@ export interface Recipe {
   sources?: string[];
   createdBy?: string;
   createdAt: number;
+  /** deleted by a parent: kept 30 days under "נמחקו לאחרונה" so it can be restored */
+  removedAt?: number;
 }
 
 export interface Slot {
@@ -99,16 +104,68 @@ export interface ShoppingItem {
   weekId?: string;
   recipes?: string[];
   /** a purchase moved this into the pantry: enough to take it back out */
-  pantry?: { id: string; created: boolean; qty?: number; unit?: string; prevQty?: number; prevUnit?: string };
+  pantry?: { id: string; created: boolean; qty?: number; unit?: string; prevQty?: number; prevUnit?: string; prevLevel?: Level | null };
+  /** the anonymous user who created this doc (lets a kid undo their own add) */
+  uid?: string;
 }
+
+/** How much is left of an item kept by level (oil, flour, rice, spices, dish soap...) */
+export type Level = 'full' | 'half' | 'low' | 'out';
+/** 'count' = a number of units (eggs, yogurts, cans); 'level' = מלא / חצי / כמעט נגמר / נגמר */
+export type QtyMode = 'count' | 'level';
 
 export interface PantryItem {
   id: string;
   name: string;
+  /** count mode: how many (0 = ran out). Older docs may have any unit here. */
   qty?: number;
   unit?: string;
+  /** absent on docs from before v1.3: see modeOf() / levelOf() */
+  mode?: QtyMode;
+  level?: Level;
   location: Location;
   updatedAt: number;
+  updatedBy?: string;
+  uid?: string;
+  /** removed by a parent: kept a week under "הוסרו לאחרונה" so it can be restored */
+  removedAt?: number;
+}
+
+/** An in-app notice for the parents ("גפן הוסיפה מילקי לרשימת הקניות"). */
+export interface Notice {
+  id: string;
+  text: string;
+  kind: 'shop' | 'pantry' | 'recipe' | 'receipt' | 'menu';
+  by: string; // memberId
+  at: number;
+  /** parent memberId -> read */
+  readBy?: Record<string, boolean>;
+  /** the kid undid the action right away */
+  undone?: boolean;
+}
+
+/** Something a kid asked for that waits for a parent's approval. */
+export interface ApprovalRequest {
+  id: string;
+  kind: 'menu-add' | 'shop-remove';
+  by: string; // memberId
+  at: number;
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+  decidedAt?: number;
+  decidedBy?: string;
+  /** shown in the feed: the dish or the item */
+  title: string;
+  // menu-add
+  weekId?: string;
+  day?: DayKey;
+  meal?: MealType;
+  recipeId?: string;
+  // shop-remove: a manual item's doc id, or a menu row's ingredient key (+ week)
+  itemId?: string;
+  menuKey?: string;
+  /** after an approved removal: the history doc, so the decision can be reversed */
+  resultId?: string;
+  uid?: string;
 }
 
 export interface ThawPlan {

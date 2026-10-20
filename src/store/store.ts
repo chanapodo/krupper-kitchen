@@ -11,7 +11,8 @@ export interface Store {
   /** resolves once signed in / loaded */
   ready: Promise<void>;
   subscribeDoc(path: string, cb: (doc: Doc | null) => void): Unsub;
-  subscribeCol(col: string, cb: (docs: Doc[]) => void): Unsub;
+  /** onError: e.g. { code: 'permission-denied' } when the published security rules are older than the app */
+  subscribeCol(col: string, cb: (docs: Doc[]) => void, onError?: (e: { code?: string }) => void): Unsub;
   set(path: string, data: Record<string, unknown>): Promise<void>;
   /** shallow merge; supports dotted keys ("ratings.kid1") */
   update(path: string, patch: Record<string, unknown>): Promise<void>;
@@ -19,6 +20,8 @@ export interface Store {
   /** several writes at once (used for first-time setup) */
   batch(writes: { path: string; data: Record<string, unknown> }[]): Promise<void>;
   newId(): string;
+  /** this device's anonymous user id (lets a kid undo their own add) */
+  uid(): string;
 
   // parent mode
   subscribeParent(cb: (isParent: boolean) => void): Unsub;

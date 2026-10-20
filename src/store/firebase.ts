@@ -52,11 +52,14 @@ export class FirebaseStore implements Store {
     );
   }
 
-  subscribeCol(col: string, cb: (docs: Doc[]) => void): Unsub {
+  subscribeCol(col: string, cb: (docs: Doc[]) => void, onError?: (e: { code?: string }) => void): Unsub {
     return onSnapshot(
       collection(this.db, `${this.root}/${col}`),
       (s) => cb(s.docs.map((d) => ({ ...d.data(), id: d.id }) as Doc)),
-      (e) => console.warn('subscribeCol', col, e),
+      (e) => {
+        console.warn('subscribeCol', col, e);
+        onError?.(e);
+      },
     );
   }
 
@@ -87,6 +90,10 @@ export class FirebaseStore implements Store {
 
   newId() {
     return doc(collection(this.db, '_')).id;
+  }
+
+  uid() {
+    return this.user?.uid ?? '';
   }
 
   private parentPath() {

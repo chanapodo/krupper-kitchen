@@ -1,5 +1,5 @@
 import { shiftWeek, weekIdOf } from '../lib/dates';
-import type { Member, PantryItem, Recipe, Settings, ShoppingItem, Vote, Week } from '../lib/types';
+import type { ApprovalRequest, Member, Notice, PantryItem, Recipe, Settings, ShoppingItem, Vote, Week } from '../lib/types';
 import { SEED_RECIPES } from './recipes';
 
 export const DEFAULT_MEMBERS: Member[] = [
@@ -38,6 +38,7 @@ const DEMO_RATINGS: Record<string, Record<string, number>> = {
 /** Everything the demo shows on first open, so it can be tried without setup. */
 export function demoData(now = new Date()): {
   settings: Settings; recipes: Recipe[]; pantry: PantryItem[]; weeks: Week[]; votes: Vote[]; shopping: ShoppingItem[];
+  notices: Notice[]; requests: ApprovalRequest[];
 } {
   const t = now.getTime();
   const recipes = SEED_RECIPES.map((r) => ({ ...r, ratings: DEMO_RATINGS[r.id] ?? {}, createdAt: t }));
@@ -51,6 +52,7 @@ export function demoData(now = new Date()): {
     p('p10', 'אפונה', 'freezer'), p('p11', 'אורז', 'pantry', 1, 'ק"ג'), p('p12', 'פסטה', 'pantry', 2), p('p13', 'ספגטי', 'pantry', 1),
     p('p14', 'עגבניות מרוסקות', 'pantry', 2), p('p15', 'בצל', 'pantry', 6), p('p16', 'שום', 'pantry'), p('p17', 'תפוחי אדמה', 'pantry', 6),
     p('p18', 'טורטיות', 'pantry', 10), p('p19', 'תירס בקופסה', 'pantry', 2), p('p20', 'רוטב טריאקי', 'pantry'),
+    p('p21', 'שמן קנולה', 'pantry'), p('p22', 'סבון כלים', 'home'), p('p23', 'שמפו', 'home'),
   ];
   const cur = weekIdOf(now);
   const next = shiftWeek(cur, 1);
@@ -77,5 +79,10 @@ export function demoData(now = new Date()): {
     { id: 's1', name: 'בננות', aisle: 'ירקות ופירות', status: 'active', addedBy: 'mom', createdAt: t },
     { id: 's2', name: 'במבה', aisle: 'חטיפים ומשקאות', status: 'pending', addedBy: 'kid2', createdAt: t },
   ];
-  return { settings: { ...structuredClone(DEFAULT_SETTINGS) }, recipes, pantry, weeks, votes, shopping };
+  // the demo kids have a gender set, so notices read naturally ("הוסיף" / "הוסיפה")
+  const settings: Settings = {
+    ...structuredClone(DEFAULT_SETTINGS),
+    members: DEFAULT_MEMBERS.map((m) => (m.id === 'kid1' ? { ...m, gender: 'm' as const } : m.id === 'kid2' ? { ...m, gender: 'f' as const } : { ...m })),
+  };
+  return { settings, recipes, pantry, weeks, votes, shopping, notices: [], requests: [] };
 }

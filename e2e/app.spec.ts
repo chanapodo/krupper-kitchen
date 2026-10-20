@@ -30,7 +30,7 @@ async function asParent(page: Page) {
   await expect(page.getByText('הורה', { exact: true })).toBeVisible();
 }
 
-test('kid: home, voting and suggesting to the shopping list (no checking or deleting)', async ({ page }) => {
+test('kid: home, voting, adding to the shopping list and ticking (removing needs a parent)', async ({ page }) => {
   await open(page);
   await shot(page, '0-who');
   await page.getByRole('button', { name: /ילד\/ה גדול\/ה/ }).click();
@@ -49,16 +49,17 @@ test('kid: home, voting and suggesting to the shopping list (no checking or dele
   await expect(page.getByText('“פנקייק”')).toBeVisible();
   await shot(page, '2-vote');
 
-  // shopping: kids only suggest
+  // shopping: kids add and tick; removing is a request
   await page.getByRole('button', { name: /קניות/ }).click();
   await expect(page.getByRole('heading', { name: /רשימת קניות/ })).toBeVisible();
-  await expect(page.getByRole('checkbox', { name: /^נקנה:/ })).toHaveCount(0);
+  await expect(page.getByRole('checkbox', { name: /^נקנה:/ }).first()).toBeVisible();
   await expect(page.getByRole('button', { name: /^למחוק/ })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'יש / לא צריך' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^יש \/ לא צריך/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^לא צריך:/ }).first()).toBeVisible();
   await page.getByLabel('פריט').fill('שוקו');
-  await page.getByRole('button', { name: 'הצעה' }).click();
-  await expect(page.getByText('ההצעות שלי')).toBeVisible();
-  await expect(page.locator('.pending-row', { hasText: 'שוקו' })).toContainText('מחכה לאישור');
+  await page.getByRole('button', { name: 'הוספה' }).click();
+  await expect(page.locator('.undo-toast')).toContainText('שוקו נוסף לרשימה');
+  await expect(page.getByRole('checkbox', { name: 'נקנה: שוקו' })).toBeVisible();
   await shot(page, '3-shopping-kid');
 });
 

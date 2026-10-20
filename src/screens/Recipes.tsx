@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Sheet, Chips, go, KOSHER_LABEL, KosherBadge, RecipeThumb } from '../components/ui';
 import { avgRating, isKidFriendly, isSpecial, kidsFavorites } from '../lib/logic';
 import type { Kosher } from '../lib/types';
@@ -9,7 +9,17 @@ import { matchRecipes } from '../lib/recipeDraft';
 type F = 'all' | 'quick' | 'kids' | 'special' | Kosher;
 
 export default function RecipesScreen() {
-  const { recipes, pendingRecipes, settings, isParent, me } = useApp();
+  const { recipes, pendingRecipes, removedRecipes, settings, isParent, me, store, toast } = useApp();
+  // a parent's device deletes for good what was deleted more than 30 days ago
+  useEffect(() => {
+    if (!isParent) return;
+    for (const r of removedRecipes) if ((r.removedAt ?? 0) < Date.now() - 30 * 24 * 3600_000) store.remove(`recipes/${r.id}`);
+  }, [isParent, removedRecipes, store]);
+  const restoreRecipe = async (r: (typeof removedRecipes)[number]) => {
+    const { removedAt: _r, ...doc } = r;
+    await store.set(`recipes/${r.id}`, doc as unknown as Record<string, unknown>);
+    toast(`${r.title} חזר לספר המתכונים`);
+  };
   const [q, setQ] = useState('');
   const [f, setF] = useState<F>('all');
   const [cuisine, setCuisine] = useState('');
@@ -106,6 +116,19 @@ export default function RecipesScreen() {
         })}
       </div>
       {!list.length && !q.trim() && <p className="muted center">לא נמצאו מתכונים</p>}
+      {isParent && removedRecipes.length > 0 && (
+        <details className="card history recent">
+          <summary>↩ נמחקו לאחרונה ({removedRecipes.length})</summary>
+          <ul className="history-list">
+            {[...removedRecipes].sort((a, b) => (b.removedAt ?? 0) - (a.removedAt ?? 0)).map((r) => (
+              <li key={r.id} className="history-row">
+                <span className="grow"><span className="item-name">{r.emoji} {r.title}</span></span>
+                <button className="btn small" onClick={() => restoreRecipe(r)} aria-label={`להחזיר: ${r.title}`}>להחזיר</button>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
       {adding !== null && (
         <Sheet title="מתכון חדש" onClose={() => setAdding(null)}>
           {adding === '' ? (
@@ -121,7 +144,7 @@ export default function RecipesScreen() {
             </>
           ) : (
             <NewDish query={adding} onManual={(n) => go(`edit/new/${encodeURIComponent(n)}`)}
-              onSaved={(r) => { setAdding(null); setQ(''); if (isParent) go(`recipe/${r.id}`); }} />
+              onSaved={(r) => { setAdding(null); setQ(''); go(`recipe/${r.id}`); }} />
           )}
         </Sheet>
       )}

@@ -1,10 +1,11 @@
 import RecipeForm from '../components/RecipeForm';
 import { Empty, go } from '../components/ui';
+import { verb } from '../lib/logic';
 import type { Recipe } from '../lib/types';
 import { useApp } from '../state';
 
 export default function RecipeEdit({ id, name }: { id: string; name?: string }) {
-  const { recipeMap, store, me, isParent, toast, pantry, shopping } = useApp();
+  const { recipeMap, store, me, isParent, toast, pantry, shopping, notify } = useApp();
   const existing = id !== 'new' ? recipeMap.get(id) : undefined;
 
   if (id !== 'new' && !existing) return <Empty emoji="🤷">המתכון לא נמצא</Empty>;
@@ -22,12 +23,12 @@ export default function RecipeEdit({ id, name }: { id: string; name?: string }) 
       ...r, id: rid,
       createdAt: existing?.createdAt || Date.now(),
       createdBy: existing?.createdBy ?? me?.id,
-      // a kid's new recipe waits for a parent, like a found one
-      ...(existing ? {} : isParent ? {} : { status: 'pending' as const }),
     };
     await store.set(`recipes/${rid}`, data as unknown as Record<string, unknown>);
-    toast(existing ? 'המתכון עודכן' : isParent ? 'המתכון נוסף לספר המתכונים 🎉' : 'המתכון נשלח להורים לאישור 🙏');
-    go(isParent || existing ? `recipe/${rid}` : 'recipes');
+    // a kid's new recipe goes straight in; the parents get a notice
+    if (!existing && me && !isParent) await notify('recipe', `${me.name} ${verb(me, 'הוסיף')} ${data.title} למתכונים`);
+    toast(existing ? 'המתכון עודכן' : 'המתכון נוסף לספר המתכונים 🎉');
+    go(`recipe/${rid}`);
   };
 
   return (

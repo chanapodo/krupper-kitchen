@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Avatar, Chips, Empty, go, KosherBadge, RATING_FACES, RecipeThumb, Sheet, youtubeId, youtubeSearch, Ok } from '../components/ui';
 import { ingredientKey, isStaple } from '../data/catalog';
 import { DAY_NAMES, shiftWeek, weekIdOf, weekLabel } from '../lib/dates';
-import { avgRating, canAddToSlot, emptyWeek, haveAtHome, MEAL_NAMES, newShoppingItem, pantryIndex, weekDays, onList } from '../lib/logic';
+import { avgRating, canAddToSlot, emptyWeek, haveAtHome, MEAL_NAMES, newShoppingItem, pantryIndex, weekDays, onList, verb } from '../lib/logic';
 import type { MealType } from '../lib/types';
 import { formatQty } from '../lib/units';
 import { useApp } from '../state';
@@ -10,7 +10,7 @@ import { useApp } from '../state';
 const DIFF = ['', 'קל', 'בינוני', 'מאתגר'];
 
 export default function RecipeDetail({ id }: { id: string }) {
-  const { recipeMap, me, isParent, store, settings, pantry, shopping, toast, getWeek } = useApp();
+  const { recipeMap, me, isParent, store, settings, pantry, shopping, toast, getWeek, notify } = useApp();
   const r = recipeMap.get(id);
   const [planning, setPlanning] = useState(false);
   const cur = weekIdOf(new Date());
@@ -28,10 +28,18 @@ export default function RecipeDetail({ id }: { id: string }) {
   const addMissing = async () => {
     if (!me) return;
     const todo = missing.filter((i) => !listed.has(ingredientKey(i.name)));
+    const ids: string[] = [];
     for (const i of todo) {
-      await store.set(`shopping/${store.newId()}`, newShoppingItem(i.name, me.id, isParent, i.qty, i.unit) as unknown as Record<string, unknown>);
+      const id = store.newId();
+      await store.set(`shopping/${id}`, { ...newShoppingItem(i.name, me.id, isParent, i.qty, i.unit), uid: store.uid() } as unknown as Record<string, unknown>);
+      ids.push(id);
     }
-    toast(todo.length ? (isParent ? `${todo.length} פריטים נוספו לרשימה` : `${todo.length} פריטים נשלחו לאישור ההורים`) : 'הכול כבר ברשימה');
+    if (!todo.length) return toast('הכול כבר ברשימה');
+    const withdraw = await notify('shop', `${me.name} ${verb(me, 'הוסיף')} לרשימת הקניות ${todo.length} מצרכים ל${r.title}: ${todo.map((i) => i.name).join(', ')}`);
+    toast(`${todo.length} פריטים נוספו לרשימה`, async () => {
+      for (const id of ids) await store.remove(`shopping/${id}`);
+      await withdraw?.();
+    });
   };
 
   const place = async (day: keyof typeof DAY_NAMES, meal: MealType) => {
@@ -49,17 +57,21 @@ export default function RecipeDetail({ id }: { id: string }) {
     toast(`${r.title} נכנס לספר המתכונים 🎉`);
   };
 
+  // kept for 30 days under "נמחקו לאחרונה" in the recipe bank, so it can be restored later
+  const softDelete = () => store.update(`recipes/${r.id}`, { removedAt: Date.now() });
+  const back = () => store.set(`recipes/${r.id}`, r as unknown as Record<string, unknown>);
+
   const reject = async () => {
     if (!confirm(`לדחות את ההצעה ${r.title}?`)) return;
-    await store.remove(`recipes/${r.id}`);
-    toast(`נדחתה ההצעה: ${r.title}`, () => store.set(`recipes/${r.id}`, r as unknown as Record<string, unknown>));
+    await softDelete();
+    toast(`נדחתה ההצעה: ${r.title}`, back);
     history.back();
   };
 
   const del = async () => {
     if (!confirm(`למחוק את ${r.title}?`)) return;
-    await store.remove(`recipes/${r.id}`);
-    toast(`נמחק: ${r.title}`, () => store.set(`recipes/${r.id}`, r as unknown as Record<string, unknown>));
+    await softDelete();
+    toast(`נמחק: ${r.title}`, back);
     go('recipes');
   };
 

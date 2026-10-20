@@ -59,12 +59,14 @@ test('parent: a dish that is not in the bank — find a recipe, review it, it la
   await expect(monday.getByText('להפשיר')).toBeVisible();
   await shot(page, 'n3-menu');
 
-  // shopping list for next week now has the new ingredients (beef minus the 500g at home)
+  // shopping list for next week now has the new ingredients (minced beef is kept by level and is at home: not listed)
   await page.locator('.tabbar').getByRole('button', { name: /קניות/ }).click();
   await page.getByRole('button', { name: 'תפריט השבוע הבא' }).click();
   await expect(page.locator('.list-row', { hasText: 'ציר בקר' })).toBeVisible();
   await expect(page.locator('.list-row', { hasText: 'בצל סגול' })).toContainText('פאי רועים');
-  await expect(page.locator('.list-row', { hasText: 'בשר טחון' })).toContainText('100 גרם');
+  await expect(page.locator('.aisle .list-row', { hasText: 'בשר טחון' })).toHaveCount(0);
+  await page.locator('.history.covered summary').click();
+  await expect(page.locator('.history.covered .history-row', { hasText: 'בשר טחון' })).toContainText('יש בבית: מלא');
 
   // and it's in the recipe bank for good
   await page.locator('.tabbar').getByRole('button', { name: /מתכונים/ }).click();
@@ -86,37 +88,30 @@ test('parent: "just a name" adds the dish at once; kosher clash is blocked', asy
   await expect(page.locator('.day-card').nth(1).getByText('מרק תירס')).toBeVisible();
 });
 
-test('kid: proposes a new dish with a found recipe; it waits until a parent approves', async ({ page }) => {
+test('kid: adds a new dish with a found recipe straight to the bank; the parents get a notice', async ({ page }) => {
   await open(page);
   await page.getByRole('button', { name: /ילד\/ה קטן\/ה/ }).click();
   await page.getByRole('button', { name: /מה בא לך לאכול/ }).click();
   await page.getByLabel('חיפוש מנה').fill('פאי רועים');
   await page.getByRole('button', { name: /להציע ״פאי רועים״/ }).click();
   await page.getByRole('button', { name: /מצאי לי מתכון/ }).click();
-  await page.getByRole('button', { name: 'לשלוח להורים לאישור' }).click();
-  await expect(page.getByRole('status')).toContainText('נשלחה להורים');
-  await expect(page.locator('.wish', { hasText: 'פאי רועים' })).toContainText('מחכה לאישור');
+  await page.getByRole('button', { name: 'שמירה בספר המתכונים' }).click();
+  await expect(page.getByRole('status')).toContainText('נוסף לספר המתכונים');
   await expect(page.getByText('4/5')).toBeVisible();
-  await shot(page, 'n4-kid-pending');
+  await shot(page, 'n4-kid-added');
 
-  // not in the bank yet
+  // already in the bank
   await page.locator('.tabbar').getByRole('button', { name: /מתכונים/ }).click();
-  await expect(page.getByText('ההצעות שלי')).toBeVisible();
   await page.getByPlaceholder(/חיפוש מתכון/).fill('פאי');
-  await expect(page.locator('.recipe-card')).toHaveCount(0);
+  await expect(page.locator('.recipe-card', { hasText: 'פאי רועים' })).toBeVisible();
 
-  // a parent approves it
+  // a parent sees a notice under the bell
   await page.locator('.me-btn').click();
   await page.getByRole('button', { name: 'החלפת משתמש', exact: true }).click();
   await page.getByRole('button', { name: /אמא/ }).click();
   await pin(page);
-  await page.getByRole('button', { name: /מתכון חדש שהילדים הציעו: פאי רועים/ }).click();
-  await expect(page.getByText(/מחכה לאישור הורה/)).toBeVisible();
-  await page.getByRole('button', { name: /לאשר לספר המתכונים/ }).click();
-  await expect(page.getByText(/מחכה לאישור הורה/)).toHaveCount(0);
-  await page.locator('.tabbar').getByRole('button', { name: /מתכונים/ }).click();
-  await page.getByPlaceholder(/חיפוש מתכון/).fill('פאי');
-  await expect(page.locator('.recipe-card', { hasText: 'פאי רועים' })).toBeVisible();
+  await page.locator('.bell-btn').click();
+  await expect(page.locator('.notice-row.unread')).toContainText('ילד/ה קטן/ה הוסיפה פאי רועים למתכונים');
 });
 
 test('recipe bank: import a recipe from a YouTube link', async ({ page }) => {

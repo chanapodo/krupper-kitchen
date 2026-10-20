@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Avatar, go, RecipeThumb, Ok } from '../components/ui';
 import { dayKeyOf, weekIdOf } from '../lib/dates';
-import { kidsFavorites, MEAL_NAMES, thawBanner, votingWeekId } from '../lib/logic';
+import { kidsFavorites, MEAL_NAMES, pendingRequests, thawBanner, votingWeekId } from '../lib/logic';
 import type { MealType } from '../lib/types';
 import { useApp } from '../state';
 
@@ -13,7 +13,8 @@ function greeting(h: number) {
 }
 
 export default function Home() {
-  const { me, isParent, getWeek, recipeMap, recipes, pendingRecipes, pantry, shopping, votes, settings } = useApp();
+  const { me, isParent, getWeek, recipeMap, recipes, pendingRecipes, pantry, shopping, votes, settings, requests } = useApp();
+  const asks = pendingRequests(requests);
   const now = new Date();
   const banner = thawBanner(now, getWeek, recipeMap, pantry);
   const doneKey = banner ? `kk-thaw-done-${banner.date}-${banner.when}` : '';
@@ -79,9 +80,14 @@ export default function Home() {
         </button>
       )}
 
-      {isParent && (pending.length > 0 || kidVotes.length > 0 || pendingRecipes.length > 0) && (
+      {isParent && (asks.length > 0 || pending.length > 0 || kidVotes.length > 0 || pendingRecipes.length > 0) && (
         <section className="card soft-peach">
           <h2>מחכה לך</h2>
+          {asks.length > 0 && (
+            <button className="row-btn" onClick={() => go('bell')}>
+              🙋 {asks.length === 1 ? 'בקשה אחת של הילדים מחכה לאישור' : `${asks.length} בקשות של הילדים מחכות לאישור`}
+            </button>
+          )}
           {pending.length > 0 && (
             <button className="row-btn" onClick={() => go('shop')}>
               🛒 {pending.length} בקשות לרשימת הקניות מחכות לאישור

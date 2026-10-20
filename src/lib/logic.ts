@@ -1,10 +1,11 @@
 import {
-  aisleOf, AISLES, defaultLocation, displayName, ingredientKey, isStaple, needsThaw,
+  aisleName, aisleOf, AISLES, defaultLocation, displayName, ingredientKey, isStaple, needsThaw,
 } from '../data/catalog';
+import { countOf, defaultMode, isPresent, modeOf } from './pantry';
 import { addDays, dateOf, DAY_KEYS, dayKeyOf, shiftWeek, weekIdOf, ymd } from './dates';
 import { canon } from './units';
 import type {
-  DayKey, Ingredient, Kosher, MealType, Member, PantryItem, Recipe, ShoppingItem, ThawPlan, Vote, Week,
+  ApprovalRequest, DayKey, Ingredient, Kosher, Location, MealType, Member, Notice, PantryItem, QtyMode, Recipe, ShoppingItem, ThawPlan, Vote, Week,
 } from './types';
 
 export const MEAL_NAMES: Record<MealType, string> = { lunch: 'צהריים', dinner: 'ערב' };
@@ -80,60 +81,68 @@ export function pantryIndex(pantry: PantryItem[]): Map<string, PantryItem[]> {
   return m;
 }
 
-/** Is there some of this ingredient at home? (an item with no quantity counts as "yes") */
+/** Is there some of this ingredient at home? (level items unless "נגמר"; count items with no number count as "yes") */
 export function haveAtHome(name: string, idx: Map<string, PantryItem[]>): boolean {
   if (isStaple(name)) return true;
-  return (idx.get(ingredientKey(name)) ?? []).some((p) => p.qty === undefined || p.qty === null || p.qty > 0);
+  return (idx.get(ingredientKey(name)) ?? []).some(isPresent);
 }
 
 /**
  * What to write to the pantry when something is bought.
- * Merges into an existing item of the same ingredient when the units allow it.
+ * Merges into an existing item of the same ingredient, keeping all its other fields:
+ * a level item goes back to "מלא"; a count item adds up when the units allow it.
  */
 export function addToPantry(
   pantry: PantryItem[],
-  item: { name: string; qty?: number; unit?: string },
+  item: { name: string; qty?: number; unit?: string; location?: Location; mode?: QtyMode },
   now = Date.now(),
 ): { id?: string; data: Omit<PantryItem, 'id'> } {
   const key = ingredientKey(item.name);
   const existing = pantry.find((p) => ingredientKey(p.name) === key);
   const add = canon(item.qty, item.unit);
   if (existing) {
+    const { id, qty: _q, unit: _u, ...doc } = existing;
+    if (modeOf(existing) === 'level') {
+      return { id, data: { ...doc, ...(existing.qty !== undefined ? { qty: existing.qty } : {}), ...(existing.unit ? { unit: existing.unit } : {}), mode: 'level', level: 'full', updatedAt: now } };
+    }
     const cur = canon(existing.qty, existing.unit);
     let qty: number | undefined;
     let unit: string | undefined;
     if (cur.qty !== undefined && add.qty !== undefined && cur.unit === add.unit) {
       qty = cur.qty + add.qty;
-      unit = cur.unit;
+      unit = cur.unit || existing.unit;
     } else if (add.qty !== undefined) {
       qty = add.qty;
-      unit = add.unit;
+      unit = add.unit || undefined;
     } else {
-      qty = cur.qty;
-      unit = cur.unit;
+      // bought an unknown amount: after running out it's simply "יש"
+      qty = cur.qty === 0 ? undefined : cur.qty;
+      unit = qty === undefined ? undefined : cur.unit || existing.unit;
     }
     return {
-      id: existing.id,
-      data: { name: existing.name, location: existing.location, qty, ...(unit ? { unit } : {}), updatedAt: now },
+      id,
+      data: { ...doc, mode: 'count', ...(qty !== undefined ? { qty } : {}), ...(unit ? { unit } : {}), updatedAt: now },
     };
   }
+  const mode = item.mode ?? defaultMode(item.name, item.qty, item.unit);
   return {
     data: {
       name: displayName(item.name),
-      location: defaultLocation(item.name),
-      ...(add.qty !== undefined ? { qty: add.qty } : {}),
-      ...(add.unit ? { unit: add.unit } : {}),
+      location: item.location ?? defaultLocation(item.name),
+      mode,
+      ...(mode === 'level' ? { level: 'full' as const } : {}),
+      ...(mode === 'count' && add.qty !== undefined ? { qty: add.qty } : {}),
+      ...(mode === 'count' && add.unit ? { unit: add.unit } : {}),
       updatedAt: now,
     },
   };
 }
 
-/** Change a pantry quantity by +-1 step; returns null when the item should be removed. */
-export function bumpPantry(item: PantryItem, dir: 1 | -1): number | null | undefined {
-  if (item.qty === undefined || item.qty === null) return dir < 0 ? null : 1;
-  const step = item.unit === 'גרם' || item.unit === 'מ"ל' ? (item.qty > 250 || dir > 0 ? 250 : item.qty) : 1;
-  const next = item.qty + dir * step;
-  return next <= 0 ? null : next;
+/** A count item's +-1 step (never below 0: 0 is "נגמר" and stays visible). */
+export function bumpPantry(item: PantryItem, dir: 1 | -1): number {
+  const n = countOf(item);
+  if (n === undefined) return dir < 0 ? 0 : 1;
+  return Math.max(0, n + dir);
 }
 
 // ---------- shopping list ----------
@@ -211,6 +220,11 @@ function menuNeeds(
     let qty = t.unknownQty ? undefined : t.qty;
     let covered = false;
     for (const p of stock) {
+      if (modeOf(p) === 'level') {
+        // recipes only check that a level item is there
+        if (isPresent(p)) covered = true;
+        continue;
+      }
       const pc = canon(p.qty, p.unit);
       if (pc.qty === undefined || pc.unit !== (t.unit ?? '') || qty === undefined) {
         // some at home and we can't compare amounts -> assume it's enough
@@ -240,7 +254,7 @@ export interface ListRow {
 /** Rows grouped by store aisle, in walking order. Pending suggestions are not included. */
 export function groupByAisle(rows: ListRow[]): { aisle: string; rows: ListRow[] }[] {
   const groups = new Map<string, ListRow[]>();
-  for (const r of rows) groups.set(r.aisle, [...(groups.get(r.aisle) ?? []), r]);
+  for (const r of rows) groups.set(aisleName(r.aisle), [...(groups.get(aisleName(r.aisle)) ?? []), r]);
   const order = (a: string) => {
     const i = (AISLES as readonly string[]).indexOf(a);
     return i < 0 ? AISLES.length : i;
@@ -321,6 +335,12 @@ export function undoPantry(
   const p = pantry.find((x) => x.id === rec.id);
   if (!p) return null;
   const { id: _id, ...doc } = p;
+  if (rec.prevLevel !== undefined) {
+    // a level item was set to "מלא" by the purchase: put back its level
+    if (rec.created) return { remove: true };
+    const { level: _l, ...bare } = doc;
+    return { data: { ...bare, ...(rec.prevLevel ? { level: rec.prevLevel } : {}), updatedAt: now } };
+  }
   const cur = canon(p.qty, p.unit);
   const add = canon(rec.qty, rec.unit);
   const left = cur.qty !== undefined && add.qty !== undefined && cur.unit === add.unit ? Math.round((cur.qty - add.qty) * 1000) / 1000 : undefined;
@@ -340,12 +360,16 @@ export function restoredItem(rec: ShoppingItem): Omit<ShoppingItem, 'id'> {
 /** Still on the list (or waiting for approval), not history. */
 export const onList = (s: ShoppingItem) => s.status === 'active' || s.status === 'pending';
 
-/** Who may do what on the shopping list. Kids only suggest; parents decide. */
+/**
+ * Who may do what on the shopping list (v1.3): everyone adds and ticks "bought";
+ * a kid's removal becomes a request that a parent approves.
+ */
 export const listPermissions = (isParent: boolean) => ({
-  check: isParent,
+  check: true,
   remove: isParent,
+  requestRemove: !isParent,
   approve: isParent,
-  addStatus: (isParent ? 'active' : 'pending') as ShoppingItem['status'],
+  addStatus: 'active' as ShoppingItem['status'],
 });
 
 export function newShoppingItem(
@@ -462,7 +486,7 @@ export function thawForDate(
   const day = week?.days[dayKeyOf(date)];
   if (!day) return [];
   const inFridge = new Set(
-    pantry.filter((p) => p.location === 'fridge' && (p.qty === undefined || p.qty > 0)).map((p) => ingredientKey(p.name)),
+    pantry.filter((p) => p.location === 'fridge' && isPresent(p)).map((p) => ingredientKey(p.name)),
   );
   const out: ThawAlert[] = [];
   for (const meal of ['lunch', 'dinner'] as MealType[]) {
@@ -580,6 +604,50 @@ export function toggleVote(current: string[], recipeId: string, max = MAX_VOTES)
 /** The week kids vote for: next week, since this one is usually already planned. */
 export function votingWeekId(now = new Date()): string {
   return shiftWeek(weekIdOf(now), 1);
+}
+
+// ---------- kids' notices and approval requests ----------
+
+const FINAL: Record<string, string> = { 'ך': 'כ', 'ם': 'מ', 'ן': 'נ', 'ף': 'פ', 'ץ': 'צ' };
+
+/** A past-tense verb for a member: "הוסיף" / "הוסיפה" / "הוסיף/ה" when the gender isn't set. */
+export function verb(m: Pick<Member, 'gender'> | undefined, masc: string): string {
+  const fem = masc.slice(0, -1) + (FINAL[masc.slice(-1)] ?? masc.slice(-1)) + 'ה';
+  if (m?.gender === 'f') return fem;
+  if (m?.gender === 'm') return masc;
+  return `${masc}/ה`;
+}
+
+/** Notices a parent hasn't read (or the kid undid). */
+export function unreadNotices(notices: Notice[], parentId: string | undefined): Notice[] {
+  return notices.filter((n) => !n.undone && !(parentId && n.readBy?.[parentId]));
+}
+
+export function pendingRequests(requests: ApprovalRequest[]): ApprovalRequest[] {
+  return requests.filter((r) => r.status === 'pending').sort((a, b) => a.at - b.at);
+}
+
+/** Pending "please remove" requests, by list row id ("menu:<key>" or a manual item's id). */
+export function removalRequests(requests: ApprovalRequest[], weekId: string): Map<string, ApprovalRequest> {
+  const m = new Map<string, ApprovalRequest>();
+  for (const r of pendingRequests(requests)) {
+    if (r.kind !== 'shop-remove') continue;
+    if (r.itemId) m.set(r.itemId, r);
+    else if (r.menuKey && (!r.weekId || r.weekId === weekId)) m.set(`menu:${r.menuKey}`, r);
+  }
+  return m;
+}
+
+/** Dishes kids put in a meal slot that wait for a parent. */
+export function slotRequests(requests: ApprovalRequest[], weekId: string, day: DayKey, meal: MealType): ApprovalRequest[] {
+  return pendingRequests(requests).filter((r) => r.kind === 'menu-add' && r.weekId === weekId && r.day === day && r.meal === meal);
+}
+
+/** Decided requests from the last week, newest first (for the feed, where a decision can be reversed). */
+export function decidedRequests(requests: ApprovalRequest[], now = Date.now()): ApprovalRequest[] {
+  return requests
+    .filter((r) => (r.status === 'approved' || r.status === 'rejected') && (r.decidedAt ?? 0) > now - 7 * 24 * 3600_000)
+    .sort((a, b) => (b.decidedAt ?? 0) - (a.decidedAt ?? 0));
 }
 
 export { dateOf };

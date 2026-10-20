@@ -60,6 +60,24 @@ export function linkPrompt(url: string): string {
 ${RULES}`;
 }
 
+/** A recipe pasted as text: only what it says, no inventing. */
+export function textPrompt(pasted: string): string {
+  return `זה טקסט של מתכון שהודבק (אולי מאתר, הודעה או פוסט, עם טקסט מיותר מסביב):
+"""
+${pasted.slice(0, 20000)}
+"""
+חלץ/י ממנו את המתכון, ותרגם/י לעברית אם צריך. אל תוסיף/י מצרכים שלא מופיעים בטקסט.
+אם אין בטקסט מתכון, החזר/י {"error": "no-recipe"}.
+${RULES.replace(/- sources:.*\n/, '- sources: [] (ריק).\n')}`;
+}
+
+/** A photo or screenshot of a recipe. */
+export function imagePrompt(): string {
+  return `בתמונה יש מתכון (צילום מספר, צילום מסך מאתר או מפוסט). קרא/י אותו וחלץ/י את המתכון, ותרגם/י לעברית אם צריך.
+אל תוסיף/י מצרכים שלא מופיעים בתמונה. אם אין בתמונה מתכון, החזר/י {"error": "no-recipe"}.
+${RULES.replace(/- sources:.*\n/, '- sources: [] (ריק).\n')}`;
+}
+
 /** Pull the JSON object out of a model reply (which may wrap it in ``` fences or prose). */
 export function extractJson(text: string): unknown {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);

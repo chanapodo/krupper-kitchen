@@ -425,3 +425,63 @@ button.face.on, span.face.on { filter: none; opacity: 1; transform: scale(1.18);
 .option-emoji { font-size: 1.6rem; width: 48px; height: 48px; border-radius: 14px; background: var(--lavender); display: grid; place-items: center; flex-shrink: 0; }
 .sources { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 6px; font-size: 0.85rem; }
 .pending-badge { background: var(--butter); color: #8a6d00; }
+
+/* ---------- v1.3: bell, approvals, notices ---------- */
+.bell-btn { position: relative; width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; font-size: 1.25rem; }
+.bell-btn:hover { background: var(--line); }
+.bell-badge {
+  position: absolute; top: 1px; inset-inline-end: 0; min-width: 19px; height: 19px; padding: 0 5px; border-radius: 99px;
+  background: var(--coral); color: #fff; font-size: 0.72rem; font-weight: 700; display: grid; place-items: center;
+}
+.approval-list, .notice-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.approval-row, .notice-row { display: flex; align-items: center; gap: 10px; padding: 9px 0; flex-wrap: wrap; }
+.approval-row + .approval-row, .notice-row + .notice-row { border-top: 1px solid rgba(0, 0, 0, 0.06); }
+.approval-row .grow { min-width: 160px; }
+.approval-actions { display: flex; gap: 6px; margin-inline-start: auto; }
+.notice-row { color: var(--ink-2); }
+.notice-row.unread { color: var(--ink); }
+.notice-row.unread .notice-text { font-weight: 600; }
+.notice-row.unread::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--coral); flex-shrink: 0; }
+.rules-banner ol { margin: 0; padding-inline-start: 20px; display: flex; flex-direction: column; gap: 4px; }
+
+/* kids' requests on the list and the menu */
+.list-row.asked { background: #fffaf0; }
+.asked-line { display: block; font-size: 0.8rem; color: #8a6d00; margin-top: 2px; }
+.asked-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.dish.asked { background: #fffaf0; border-radius: 12px; }
+.icon-btn.ok { background: var(--parve); color: var(--parve-ink); }
+.receipt-link { align-self: flex-start; }
+.link.small { font-size: 0.85rem; }
+
+/* ---------- pantry levels ---------- */
+.pantry-row { flex-direction: column; align-items: stretch; gap: 8px; }
+.pr-top { display: flex; align-items: center; gap: 8px; }
+.pr-tools { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.pr-controls { display: flex; align-items: center; gap: 8px; }
+.pantry-row.out .item-name { color: var(--meat-ink); }
+.pantry-row.low .item-name::after { content: ' · כמעט נגמר'; font-size: 0.78rem; color: #8a6d00; font-weight: 500; }
+.seg { display: flex; background: #f6f3fb; border-radius: 12px; padding: 3px; gap: 2px; }
+.seg button { flex: 1; min-height: 34px; padding: 4px 8px; border-radius: 9px; font-size: 0.84rem; font-weight: 500; color: var(--ink-2); white-space: nowrap; }
+.seg button.on { background: #fff; color: var(--ink); font-weight: 700; box-shadow: 0 1px 3px rgba(59, 51, 85, 0.15); }
+.seg.levels button.on.lv-full { background: var(--parve); color: var(--parve-ink); }
+.seg.levels button.on.lv-half { background: var(--sky); color: #2f6aa8; }
+.seg.levels button.on.lv-low { background: var(--butter); color: #8a6d00; }
+.seg.levels button.on.lv-out { background: var(--meat); color: var(--meat-ink); }
+.seg button:disabled { opacity: 0.35; }
+.cta-butter { background: linear-gradient(135deg, var(--butter), #fffaf0); }
+
+/* ---------- receipt review ---------- */
+.receipt-lines { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.receipt-line { border: 1.5px solid var(--line); border-radius: 16px; padding: 10px; display: flex; flex-direction: column; gap: 6px; background: #fff; }
+.rl-top { display: flex; align-items: center; gap: 6px; }
+.rl-raw { padding-inline-start: 4px; }
+.rl-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.rl-controls .seg { flex: 0 0 auto; }
+.rl-controls .input.qty { width: 70px; }
+.aisle-select { flex: 1; min-width: 130px; height: 38px; }
+.ok-badge { background: var(--parve); color: var(--parve-ink); align-self: flex-start; }
+.sticky-actions { position: sticky; bottom: 0; background: #fff; padding: 10px 0 4px; }
+.file-option { cursor: pointer; }
+.fallbacks { display: flex; flex-direction: column; gap: 8px; padding-top: 6px; border-top: 1px dashed var(--line); }
+.fallbacks.stand-out { border-top: 0; background: var(--butter); border-radius: 16px; padding: 10px; }
+textarea.input.paste { min-height: 160px; resize: vertical; line-height: 1.5; }

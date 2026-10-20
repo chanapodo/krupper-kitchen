@@ -4,6 +4,10 @@ import { clean, hashPin, setDotted, type Doc, type Store, type Unsub } from './s
 const KEY = 'kk-demo-v1';
 const PARENT_KEY = 'kk-demo-parent';
 const FAMILY = 'demo';
+// ?demo&oldrules: behave like a family whose published security rules are older than the app
+const OLD_RULES = typeof location !== 'undefined' && /[?&]oldrules\b/.test(location.search);
+const NEW_COLS = ['notices', 'requests'];
+const denied = () => Object.assign(new Error('Missing or insufficient permissions.'), { code: 'permission-denied' });
 
 type DB = Record<string, Record<string, unknown>>;
 
@@ -44,6 +48,8 @@ export class LocalStore implements Store {
     put('weeks', d.weeks);
     put('votes', d.votes);
     put('shopping', d.shopping);
+    put('notices', d.notices);
+    put('requests', d.requests);
     localStorage.setItem(KEY, JSON.stringify(db));
     localStorage.removeItem(PARENT_KEY);
     localStorage.removeItem('kk-demo-pin');
@@ -82,7 +88,11 @@ export class LocalStore implements Store {
     });
   }
 
-  subscribeCol(col: string, cb: (docs: Doc[]) => void): Unsub {
+  subscribeCol(col: string, cb: (docs: Doc[]) => void, onError?: (e: { code?: string }) => void): Unsub {
+    if (OLD_RULES && NEW_COLS.includes(col)) {
+      setTimeout(() => onError?.(denied()), 0);
+      return () => {};
+    }
     let last = '';
     return this.listen(() => {
       const docs = Object.entries(this.db)
@@ -95,13 +105,19 @@ export class LocalStore implements Store {
     });
   }
 
+  private check(path: string) {
+    if (OLD_RULES && NEW_COLS.includes(path.split('/')[0])) throw denied();
+  }
+
   async set(path: string, data: Record<string, unknown>) {
+    this.check(path);
     const { id: _id, ...rest } = data;
     this.db[path] = clean(rest);
     this.save();
   }
 
   async update(path: string, patch: Record<string, unknown>) {
+    this.check(path);
     this.db[path] = setDotted(this.db[path] ?? {}, patch);
     this.save();
   }
@@ -118,6 +134,15 @@ export class LocalStore implements Store {
 
   newId() {
     return Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+  }
+
+  uid() {
+    let id = localStorage.getItem('kk-demo-uid');
+    if (!id) {
+      id = `u${this.newId()}`;
+      localStorage.setItem('kk-demo-uid', id);
+    }
+    return id;
   }
 
   subscribeParent(cb: (isParent: boolean) => void): Unsub {

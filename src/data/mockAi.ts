@@ -51,3 +51,20 @@ export const MOCK_AI: Record<string, AiRecipe> = {
     sources: ['https://www.example.co.il/ramen'],
   },
 };
+
+/** A demo supermarket receipt (as the model would read it): junk lines included, to show they are skipped. */
+export const MOCK_RECEIPT = {
+  items: [
+    { raw: 'בננות', name: 'בננות', qty: 1.2, unit: 'ק"ג', aisle: 'ירקות ופירות', kind: 'item' },
+    { raw: 'יוגורט דנונה 3% 200 גר', name: 'יוגורט', qty: 4, unit: 'יח׳', aisle: 'חלב וביצים', kind: 'item' },
+    { raw: 'ביצים L תבנית 12', name: 'ביצים', qty: 12, unit: 'יח׳', aisle: 'חלב וביצים', kind: 'item' },
+    { raw: 'חלב תנובה 3% 1 ליטר', name: 'חלב', qty: 2, unit: 'יח׳', aisle: 'חלב וביצים', kind: 'item' },
+    { raw: 'שמן קנולה 1 ל', name: 'שמן קנולה', qty: 1, unit: 'יח׳', aisle: 'תבלינים ואפייה', kind: 'item' },
+    { raw: 'פיירי לימון 750 מ"ל', name: 'סבון כלים', qty: 1, unit: 'יח׳', aisle: 'ניקיון וטיפוח', kind: 'item' },
+    { raw: 'נייר טואלט לילי 32', name: 'נייר טואלט', qty: 1, unit: 'יח׳', aisle: 'ניקיון וטיפוח', kind: 'item' },
+    { raw: 'פיקדון בקבוק', name: 'פיקדון', qty: 2, unit: 'יח׳', aisle: 'אחר', kind: 'deposit' },
+    { raw: 'שקית קניה', name: 'שקית', qty: 1, unit: 'יח׳', aisle: 'אחר', kind: 'bag' },
+    { raw: 'הנחת מבצע יוגורט', name: 'הנחה', qty: null, unit: null, aisle: 'אחר', kind: 'item' },
+    { raw: 'סה"כ לתשלום', name: 'סה"כ', qty: null, unit: null, aisle: 'אחר', kind: 'other' },
+  ],
+};

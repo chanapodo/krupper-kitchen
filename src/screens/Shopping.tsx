@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
-import { Avatar, Chips, Empty, Ok, X } from '../components/ui';
+import { useListActions, useRequests } from '../components/actions';
+import ReceiptScan from '../components/ReceiptScan';
+import { Avatar, Chips, Empty, Ok, Sheet, X } from '../components/ui';
 import { SUGGESTIONS } from '../data/catalog';
 import { shiftWeek, weekIdOf, weekLabel } from '../lib/dates';
 import {
-  addToPantry, buildList, coveredByPantry, doneRecord, emptyWeek, listPermissions, newShoppingItem, recentDone, restoredItem,
-  staleDone, undoPantry, type ListRow,
+  buildList, coveredByPantry, listPermissions, newShoppingItem, recentDone, removalRequests, staleDone, verb, type ListRow,
 } from '../lib/logic';
-import type { ShoppingItem } from '../lib/types';
+import { qtyLabel } from '../lib/pantry';
+import type { ApprovalRequest, ShoppingItem } from '../lib/types';
 import { formatQty } from '../lib/units';
 import { useApp } from '../state';
 
@@ -21,7 +23,10 @@ function timeAgo(t: number, now = Date.now()): string {
 }
 
 export default function ShoppingScreen() {
-  const { isParent, me, getWeek, recipeMap, pantry, shopping, store, toast, settings } = useApp();
+  const { isParent, me, getWeek, recipeMap, pantry, shopping, store, toast, settings, requests, notify } = useApp();
+  const { restore, done, buy, skip } = useListActions();
+  const decisions = useRequests();
+  const [scan, setScan] = useState(false);
   const cur = weekIdOf(new Date());
   // from Thursday on, the shopping is usually for next week
   const [weekId, setWeekId] = useState(new Date().getDay() >= 4 ? shiftWeek(cur, 1) : cur);
@@ -35,60 +40,36 @@ export default function ShoppingScreen() {
   const covered = isParent ? coveredByPantry(week, recipeMap, pantry, shopping.filter((i) => i.status !== 'pending')) : [];
   const recent = isParent ? recentDone(shopping) : [];
 
-  // undo may run after more changes (or after leaving the screen): read the latest state then
-  const latest = useRef({ pantry, getWeek });
-  latest.current = { pantry, getWeek };
+  const removals = removalRequests(requests, weekId);
 
   // a parent's device tidies history older than a week
   useEffect(() => {
     if (isParent) for (const old of staleDone(shopping)) store.remove(`shopping/${old.id}`);
   }, [isParent, shopping, store]);
 
-  /** Put a bought / removed item back on the list (and take a purchase back out of the pantry). */
-  const restore = async (rec: ShoppingItem) => {
-    if (rec.pantry) {
-      const u = undoPantry(latest.current.pantry, rec.pantry);
-      if (u && 'remove' in u) await store.remove(`pantry/${rec.pantry.id}`);
-      else if (u) await store.set(`pantry/${rec.pantry.id}`, u.data as unknown as Record<string, unknown>);
-    }
-    if (rec.menuKey && rec.weekId) {
-      const w = latest.current.getWeek(rec.weekId);
-      if (w?.skipped?.includes(rec.menuKey)) {
-        await store.set(`weeks/${w.id}`, { ...w, skipped: w.skipped.filter((k) => k !== rec.menuKey) } as unknown as Record<string, unknown>);
-      }
-    }
-    if (rec.menuKey) await store.remove(`shopping/${rec.id}`);
-    else await store.set(`shopping/${rec.id}`, restoredItem(rec) as unknown as Record<string, unknown>);
-  };
-
-  /** Write the history record and offer the big undo toast. */
-  const done = async (row: ListRow | ShoppingItem, kind: 'bought' | 'removed', msg: string, extra: Parameters<typeof doneRecord>[3] = {}) => {
-    const isRow = 'fromMenu' in row;
-    const own = isRow ? row.item : row;
-    const id = own?.id ?? store.newId();
-    const rec = doneRecord(row, kind, me?.id ?? '', extra);
-    await store.set(`shopping/${id}`, rec as unknown as Record<string, unknown>);
-    toast(msg, () => restore({ ...rec, id }));
-  };
-
   const add = async () => {
     const n = name.trim();
     if (!n || !me) return;
     const q = qty.trim() ? Number(qty) : undefined;
-    const item = newShoppingItem(n, me.id, isParent, Number.isFinite(q) ? q : undefined);
-    await store.set(`shopping/${store.newId()}`, item as unknown as Record<string, unknown>);
+    const item = { ...newShoppingItem(n, me.id, isParent, Number.isFinite(q) ? q : undefined), uid: store.uid() };
+    const id = store.newId();
+    try {
+      await store.set(`shopping/${id}`, item as unknown as Record<string, unknown>);
+    } catch (e) {
+      // security rules from before v1.3: a kid's item can only be a suggestion
+      if (isParent || (e as { code?: string })?.code !== 'permission-denied') throw e;
+      await store.set(`shopping/${id}`, { ...item, status: 'pending' } as unknown as Record<string, unknown>);
+      setName('');
+      setQty('');
+      toast(`${item.name} נשלח לאישור ההורים 🙏`);
+      return;
+    }
     setName('');
     setQty('');
-    toast(isParent ? `${item.name} נוסף לרשימה` : `${item.name} נשלח לאישור ההורים 🙏`);
-  };
-
-  const buy = async (row: ListRow) => {
-    const res = addToPantry(latest.current.pantry, { name: row.name, qty: row.qty, unit: row.unit });
-    const prev = res.id ? latest.current.pantry.find((p) => p.id === res.id) : undefined;
-    const pid = res.id ?? store.newId();
-    await store.set(`pantry/${pid}`, res.data as unknown as Record<string, unknown>);
-    await done(row, 'bought', `נקנה: ${row.name}`, {
-      pantry: { id: pid, created: !prev, qty: row.qty, unit: row.unit, prevQty: prev?.qty, prevUnit: prev?.unit },
+    const withdraw = await notify('shop', `${me.name} ${verb(me, 'הוסיף')} ${item.name} לרשימת הקניות`);
+    toast(`${item.name} נוסף לרשימה`, async () => {
+      await store.remove(`shopping/${id}`);
+      await withdraw?.();
     });
   };
 
@@ -105,7 +86,7 @@ export default function ShoppingScreen() {
     }
     const run = () => {
       timers.current.delete(row.id);
-      buy(row).finally(() => setLeaving(({ [row.id]: _, ...rest }) => rest));
+      buy(row, `נקנה: ${row.name}`).finally(() => setLeaving(({ [row.id]: _, ...rest }) => rest));
     };
     timers.current.set(row.id, { t: setTimeout(run, LEAVE_MS), run });
     setLeaving((l) => ({ ...l, [row.id]: true }));
@@ -118,16 +99,25 @@ export default function ShoppingScreen() {
     }
   }, []);
 
-  const skip = async (row: ListRow) => {
-    const w = structuredClone(week ?? emptyWeek(weekId));
-    const key = row.id.slice('menu:'.length);
-    w.skipped = [...new Set([...(w.skipped ?? []), key])];
-    await store.set(`weeks/${w.id}`, w as unknown as Record<string, unknown>);
-    await done(row, 'removed', `הוסר: ${row.name}`, { weekId: w.id });
-  };
-
+  const notNeeded = (row: ListRow) => skip(row, weekId, `הוסר: ${row.name}`);
   const remove = (row: ListRow) => done(row, 'removed', `הוסר: ${row.name}`);
   const reject = (p: ShoppingItem) => done(p, 'removed', `נדחה: ${p.name}`);
+
+  /** A kid's "not needed": a request a parent approves. */
+  const askRemove = async (row: ListRow) => {
+    if (!me) return;
+    const id = store.newId();
+    const req: Omit<ApprovalRequest, 'id'> = {
+      kind: 'shop-remove', by: me.id, at: Date.now(), status: 'pending', title: row.name, uid: store.uid(),
+      ...(row.fromMenu ? { menuKey: row.id.slice('menu:'.length), weekId } : { itemId: row.id }),
+    };
+    try {
+      await store.set(`requests/${id}`, req as unknown as Record<string, unknown>);
+    } catch {
+      return; // refused (old security rules): the toast already says so
+    }
+    toast(`ביקשת להוריד את ${row.name}. ההורים יאשרו`, () => store.update(`requests/${id}`, { status: 'cancelled' }));
+  };
 
   const addAnyway = async (c: (typeof covered)[number]) => {
     if (!me) return;
@@ -151,11 +141,12 @@ export default function ShoppingScreen() {
 
       <section className="card add-card">
         <div className="add-row">
-          <input className="input grow" list="ingredient-suggestions" placeholder={isParent ? 'מה להוסיף?' : 'מה צריך לקנות? (ההורים יאשרו)'}
+          <input className="input grow" list="ingredient-suggestions" placeholder="מה להוסיף?"
             value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} aria-label="פריט" />
           <input className="input qty" inputMode="decimal" placeholder="כמה" value={qty} onChange={(e) => setQty(e.target.value)} aria-label="כמות" />
-          <button className="btn" onClick={add}>{isParent ? 'הוספה' : 'הצעה'}</button>
+          <button className="btn" onClick={add}>הוספה</button>
         </div>
+        <button className="link small receipt-link" onClick={() => setScan(true)}>🧾 חזרנו מהסופר? סריקת קבלה מסמנת מה נקנה</button>
         <datalist id="ingredient-suggestions">
           {SUGGESTIONS.map((s) => <option key={s} value={s} />)}
         </datalist>
@@ -190,7 +181,7 @@ export default function ShoppingScreen() {
         </section>
       )}
 
-      {!isParent && <p className="note">👀 רק ההורים מסמנים ומוחקים פריטים. אפשר להציע תוספות והן יגיעו אליהם לאישור.</p>}
+      {!isParent && <p className="note">👀 מוסיפים, ומסמנים את הריבוע כשקונים. כדי להוריד פריט מהרשימה, ההורים צריכים לאשר.</p>}
 
       {total === 0 ? (
         <Empty emoji="🎉">הרשימה ריקה! כל מה שצריך לתפריט כבר בבית.</Empty>
@@ -199,8 +190,10 @@ export default function ShoppingScreen() {
           <section key={g.aisle} className="aisle">
             <h3 className="aisle-title">{g.aisle}</h3>
             <ul className="list">
-              {g.rows.map((row) => (
-                <li key={`${row.id}|${row.unit ?? ""}`} className={`list-row ${leaving[row.id] ? 'leaving' : ''}`}>
+              {g.rows.map((row) => {
+                const asked = removals.get(row.id);
+                return (
+                <li key={`${row.id}|${row.unit ?? ""}`} className={`list-row ${leaving[row.id] ? 'leaving' : ''} ${asked ? 'asked' : ''}`}>
                   {perm.check ? (
                     <button className="check" role="checkbox" aria-checked={!!leaving[row.id]} onClick={() => tick(row)} aria-label={`נקנה: ${row.name}`}>
                       {leaving[row.id] && <Ok />}
@@ -212,19 +205,34 @@ export default function ShoppingScreen() {
                     <span className="item-name">{row.name}</span>
                     {row.qty !== undefined && <span className="item-qty"> {formatQty(row.qty, row.unit)}</span>}
                     {row.fromMenu && <span className="from-menu" title={row.recipes?.join(', ')}>📅 {row.recipes?.slice(0, 2).join(', ')}{(row.recipes?.length ?? 0) > 2 ? '…' : ''}</span>}
+                    {asked && (
+                      <span className="asked-line">
+                        {isParent ? `🙋 ${memberName(asked.by)?.name ?? ''} ${verb(memberName(asked.by), 'ביקש')} להוריד` : '⏳ ממתין לאישור הסרה'}
+                      </span>
+                    )}
                   </span>
-                  {perm.remove && !leaving[row.id] && (row.fromMenu ? (
-                    <button className="btn small ghost have-btn" onClick={() => skip(row)} aria-label={`יש / לא צריך: ${row.name}`}>יש / לא צריך</button>
+                  {isParent && asked && !leaving[row.id] && (
+                    <span className="asked-actions">
+                      <button className="btn small ok" onClick={() => decisions.approve(asked)} aria-label={`לאשר הסרה: ${row.name}`}><Ok /> להוריד</button>
+                      <button className="btn small ghost" onClick={() => decisions.reject(asked)} aria-label={`להשאיר: ${row.name}`}>להשאיר</button>
+                    </span>
+                  )}
+                  {perm.remove && !asked && !leaving[row.id] && (row.fromMenu ? (
+                    <button className="btn small ghost have-btn" onClick={() => notNeeded(row)} aria-label={`יש / לא צריך: ${row.name}`}>יש / לא צריך</button>
                   ) : (
                     <button className="icon-btn small" onClick={() => remove(row)} aria-label={`למחוק ${row.name}`}><X /></button>
                   ))}
+                  {perm.requestRemove && !asked && !leaving[row.id] && (
+                    <button className="btn small ghost have-btn" onClick={() => askRemove(row)} aria-label={`לא צריך: ${row.name}`}>לא צריך</button>
+                  )}
                 </li>
-              ))}
+                );
+              })}
             </ul>
           </section>
         ))
       )}
-      {isParent && total > 0 && <p className="muted small center">מסמנים את הריבוע כשקונים – הפריט עובר ל״מה יש בבית״. טעות? ״בטל״ למטה, או ״החזר לרשימה״ בסוף הרשימה.</p>}
+      {total > 0 && <p className="muted small center">מסמנים את הריבוע כשקונים – הפריט עובר ל״מה יש בבית״. טעות? ״בטל״ למטה, או ״החזר לרשימה״ בסוף הרשימה.</p>}
 
       {covered.length > 0 && (
         <details className="card history covered">
@@ -234,7 +242,7 @@ export default function ShoppingScreen() {
               <li key={`${c.key}|${c.unit ?? ""}`} className="history-row">
                 <span className="grow">
                   <span className="item-name">{c.name}</span>
-                  <span className="from-menu">יש בבית: {c.have.map((h) => h.qty !== undefined ? formatQty(h.qty, h.unit) : 'יש').join(', ')}
+                  <span className="from-menu">יש בבית: {c.have.map(qtyLabel).join(', ')}
                     {c.qty !== undefined && ` · צריך ${formatQty(c.qty, c.unit)}`} · 📅 {c.recipes.slice(0, 2).join(', ')}</span>
                 </span>
                 <button className="btn small ghost" onClick={() => addAnyway(c)} aria-label={`להוסיף בכל זאת: ${c.name}`}>להוסיף בכל זאת</button>
@@ -263,6 +271,12 @@ export default function ShoppingScreen() {
             ))}
           </ul>
         </details>
+      )}
+
+      {scan && (
+        <Sheet title="🧾 סריקת קבלה" onClose={() => setScan(false)}>
+          <ReceiptScan weekId={weekId} onDone={() => setScan(false)} />
+        </Sheet>
       )}
     </div>
   );

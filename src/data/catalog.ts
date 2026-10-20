@@ -1,4 +1,4 @@
-import type { Location } from '../lib/types';
+import type { Location, QtyMode } from '../lib/types';
 
 export const AISLES = [
   'ירקות ופירות',
@@ -11,7 +11,7 @@ export const AISLES = [
   'תבלינים ואפייה',
   'קפואים',
   'חטיפים ומשקאות',
-  'בית וניקיון',
+  'ניקיון וטיפוח',
   'אחר',
 ] as const;
 export type Aisle = (typeof AISLES)[number];
@@ -25,10 +25,19 @@ export interface CatalogItem {
   thaw?: boolean;
   location?: Location;
   aliases?: string[];
+  /** how the pantry keeps it: 'count' for things you count (eggs, yogurts, cans, pitas); default 'level' */
+  mode?: QtyMode;
+}
+
+/** The aisle was called 'בית וניקיון' before v1.3. */
+export function aisleName(a: string): string {
+  return a === 'בית וניקיון' ? 'ניקיון וטיפוח' : a;
 }
 
 const V = 'ירקות ופירות', M = 'בשר ועוף', F = 'דגים', D = 'חלב וביצים', B = 'לחם ומאפים',
-  G = 'פסטה, אורז ודגנים', C = 'שימורים ורטבים', S = 'תבלינים ואפייה', Z = 'קפואים', K = 'חטיפים ומשקאות';
+  G = 'פסטה, אורז ודגנים', C = 'שימורים ורטבים', S = 'תבלינים ואפייה', Z = 'קפואים', K = 'חטיפים ומשקאות',
+  H = 'ניקיון וטיפוח';
+const N = 'count' as const;
 
 export const CATALOG: CatalogItem[] = [
   // vegetables & fruit
@@ -52,8 +61,8 @@ export const CATALOG: CatalogItem[] = [
   { name: 'חסה', aisle: V, location: 'fridge' },
   { name: 'פטריות', aisle: V, location: 'fridge' },
   { name: 'תירס', aisle: V, aliases: ['תירס מתוק'] },
-  { name: 'אבוקדו', aisle: V },
-  { name: 'לימון', aisle: V, aliases: ['לימונים', 'מיץ לימון'] },
+  { name: 'אבוקדו', mode: N, aisle: V },
+  { name: 'לימון', mode: N, aisle: V, aliases: ['לימונים', 'מיץ לימון'] },
   { name: 'ליים', aisle: V },
   { name: 'ג׳ינג׳ר', aisle: V, aliases: ["ג'ינג'ר", 'ג׳ינג׳ר טרי'] },
   { name: 'פטרוזיליה', aisle: V, location: 'fridge' },
@@ -79,37 +88,37 @@ export const CATALOG: CatalogItem[] = [
   { name: 'בשר בקר לבישול', aisle: M, thaw: true, location: 'freezer', aliases: ['בשר בקר', 'צלי', 'כתף בקר', 'בשר לגולאש'] },
   { name: 'אסאדו', aisle: M, thaw: true, location: 'freezer' },
   { name: 'שניצל', aisle: M, thaw: true, location: 'freezer', aliases: ['שניצלים'] },
-  { name: 'נקניקיות', aisle: M, location: 'fridge', aliases: ['נקניקייה'] },
+  { name: 'נקניקיות', mode: N, aisle: M, location: 'fridge', aliases: ['נקניקייה'] },
   { name: 'פסטרמה', aisle: M, location: 'fridge' },
   // fish
   { name: 'פילה סלמון', aisle: F, thaw: true, location: 'freezer', aliases: ['סלמון'] },
   { name: 'פילה דג לבן', aisle: F, thaw: true, location: 'freezer', aliases: ['פילה אמנון', 'פילה מושט', 'פילה בקלה', 'פילה דג', 'דג לבן'] },
-  { name: 'טונה', aisle: C, aliases: ['טונה בקופסה', 'קופסת טונה'] },
+  { name: 'טונה', mode: N, aisle: C, aliases: ['טונה בקופסה', 'קופסת טונה'] },
   // dairy & eggs
-  { name: 'ביצים', aisle: D, location: 'fridge', aliases: ['ביצה'] },
-  { name: 'חלב', aisle: D, location: 'fridge' },
+  { name: 'ביצים', mode: N, aisle: D, location: 'fridge', aliases: ['ביצה'] },
+  { name: 'חלב', mode: N, aisle: D, location: 'fridge' },
   { name: 'חמאה', aisle: D, location: 'fridge' },
-  { name: 'שמנת מתוקה', aisle: D, location: 'fridge', aliases: ['שמנת לבישול'] },
-  { name: 'שמנת חמוצה', aisle: D, location: 'fridge' },
+  { name: 'שמנת מתוקה', mode: N, aisle: D, location: 'fridge', aliases: ['שמנת לבישול'] },
+  { name: 'שמנת חמוצה', mode: N, aisle: D, location: 'fridge' },
   { name: 'גבינה צהובה', aisle: D, location: 'fridge', aliases: ['גבינה צהובה מגוררת', 'מוצרלה מגוררת'] },
   { name: 'מוצרלה', aisle: D, location: 'fridge', aliases: ['מוצרלה טרייה'] },
   { name: 'פרמזן', aisle: D, location: 'fridge', aliases: ['פרמז׳ן', 'גבינת פרמזן'] },
   { name: 'גבינה בולגרית', aisle: D, location: 'fridge', aliases: ['בולגרית', 'פטה', 'גבינה מלוחה'] },
-  { name: 'גבינה לבנה', aisle: D, location: 'fridge', aliases: ['קוטג׳', "קוטג'"] },
-  { name: 'ריקוטה', aisle: D, location: 'fridge' },
-  { name: 'יוגורט', aisle: D, location: 'fridge', aliases: ['יוגורט טבעי'] },
-  { name: 'חלב קוקוס', aisle: C, aliases: ['קרם קוקוס'] },
+  { name: 'גבינה לבנה', mode: N, aisle: D, location: 'fridge', aliases: ['קוטג׳', "קוטג'"] },
+  { name: 'ריקוטה', mode: N, aisle: D, location: 'fridge' },
+  { name: 'יוגורט', mode: N, aisle: D, location: 'fridge', aliases: ['יוגורט טבעי'] },
+  { name: 'חלב קוקוס', mode: N, aisle: C, aliases: ['קרם קוקוס'] },
   // bread
-  { name: 'טורטיות', aisle: B, aliases: ['טורטייה', 'טורטיה'] },
-  { name: 'פיתות', aisle: B, aliases: ['פיתה'] },
-  { name: 'לחמניות המבורגר', aisle: B, aliases: ['לחמניות'] },
-  { name: 'לחם', aisle: B },
+  { name: 'טורטיות', mode: N, aisle: B, aliases: ['טורטייה', 'טורטיה'] },
+  { name: 'פיתות', mode: N, aisle: B, aliases: ['פיתה'] },
+  { name: 'לחמניות המבורגר', mode: N, aisle: B, aliases: ['לחמניות'] },
+  { name: 'לחם', mode: N, aisle: B },
   { name: 'פירורי לחם', aisle: S, aliases: ['פירורי פנקו', 'פנקו'] },
-  { name: 'בצק עלים', aisle: Z, location: 'freezer' },
-  { name: 'בצק פיצה', aisle: Z, location: 'freezer' },
+  { name: 'בצק עלים', mode: N, aisle: Z, location: 'freezer' },
+  { name: 'בצק פיצה', mode: N, aisle: Z, location: 'freezer' },
   // pasta, rice, grains
-  { name: 'ספגטי', aisle: G },
-  { name: 'פסטה', aisle: G, aliases: ['פנה', 'פוזילי', 'מקרוני'] },
+  { name: 'ספגטי', mode: N, aisle: G },
+  { name: 'פסטה', mode: N, aisle: G, aliases: ['פנה', 'פוזילי', 'מקרוני'] },
   { name: 'אטריות אורז', aisle: G, aliases: ['נודלס אורז'] },
   { name: 'אטריות ביצים', aisle: G, aliases: ['נודלס', 'אטריות'] },
   { name: 'אורז', aisle: G, aliases: ['אורז לבן', 'אורז בסמטי', 'אורז יסמין'] },
@@ -120,15 +129,15 @@ export const CATALOG: CatalogItem[] = [
   { name: 'קינואה', aisle: G },
   { name: 'עדשים כתומות', aisle: G, aliases: ['עדשים'] },
   { name: 'גריסי פנינה', aisle: G },
-  { name: 'דפי לזניה', aisle: G },
+  { name: 'דפי לזניה', mode: N, aisle: G },
   { name: 'קמח', aisle: S, staple: true, aliases: ['קמח לבן'] },
   // cans & sauces
-  { name: 'רסק עגבניות', aisle: C },
-  { name: 'עגבניות מרוסקות', aisle: C, aliases: ['עגבניות מרוסקות בקופסה', 'רוטב עגבניות', 'פסטה עגבניות'] },
-  { name: 'גרגרי חומוס', aisle: C, aliases: ['חומוס בקופסה', 'חומוס יבש'] },
-  { name: 'שעועית שחורה', aisle: C },
-  { name: 'שעועית לבנה', aisle: C },
-  { name: 'תירס בקופסה', aisle: C },
+  { name: 'רסק עגבניות', mode: N, aisle: C },
+  { name: 'עגבניות מרוסקות', mode: N, aisle: C, aliases: ['עגבניות מרוסקות בקופסה', 'רוטב עגבניות', 'פסטה עגבניות'] },
+  { name: 'גרגרי חומוס', mode: N, aisle: C, aliases: ['חומוס בקופסה', 'חומוס יבש'] },
+  { name: 'שעועית שחורה', mode: N, aisle: C },
+  { name: 'שעועית לבנה', mode: N, aisle: C },
+  { name: 'תירס בקופסה', mode: N, aisle: C },
   { name: 'טחינה גולמית', aisle: C, aliases: ['טחינה'] },
   { name: 'רוטב סויה', aisle: C, staple: true, aliases: ['סויה'] },
   { name: 'רוטב טריאקי', aisle: C },
@@ -172,6 +181,30 @@ export const CATALOG: CatalogItem[] = [
   // snacks & drinks
   { name: 'נאצ׳וס', aisle: K, aliases: ["נאצ'וס", 'טורטיה צ׳יפס'] },
   { name: 'מיץ תפוזים', aisle: K },
+  // cleaning & personal care
+  { name: 'סבון כלים', aisle: H, location: 'home', aliases: ['נוזל כלים', 'פיירי'] },
+  { name: 'טבליות למדיח', aisle: H, location: 'home', aliases: ['טבליות מדיח', 'קפסולות למדיח'] },
+  { name: 'אבקת כביסה', aisle: H, location: 'home', aliases: ['ג׳ל כביסה', "ג'ל כביסה", 'נוזל כביסה'] },
+  { name: 'מרכך כביסה', aisle: H, location: 'home' },
+  { name: 'אקונומיקה', aisle: H, location: 'home' },
+  { name: 'נוזל לניקוי רצפות', aisle: H, location: 'home', aliases: ['סבון רצפות', 'נוזל רצפות'] },
+  { name: 'תרסיס ניקוי', aisle: H, location: 'home', aliases: ['ספריי ניקוי', 'מסיר שומנים'] },
+  { name: 'ספוגים', aisle: H, location: 'home', mode: N, aliases: ['ספוג', 'ספוגיות'] },
+  { name: 'נייר טואלט', aisle: H, location: 'home', mode: N, aliases: ['נייר טואלט', 'נייר טואלאט'] },
+  { name: 'מגבות נייר', aisle: H, location: 'home', mode: N, aliases: ['נייר מגבת', 'מגבת נייר'] },
+  { name: 'מגבונים', aisle: H, location: 'home', mode: N, aliases: ['מגבונים לחים'] },
+  { name: 'שקיות אשפה', aisle: H, location: 'home', mode: N, aliases: ['שקיות זבל'] },
+  { name: 'נייר כסף', aisle: H, location: 'home', aliases: ['נייר אלומיניום'] },
+  { name: 'נייר אפייה', aisle: H, location: 'home' },
+  { name: 'שמפו', aisle: H, location: 'home' },
+  { name: 'מרכך שיער', aisle: H, location: 'home' },
+  { name: 'סבון רחצה', aisle: H, location: 'home', aliases: ['סבון גוף', 'ג׳ל רחצה', "ג'ל רחצה", 'תחליב רחצה'] },
+  { name: 'סבון ידיים', aisle: H, location: 'home', aliases: ['סבון נוזלי'] },
+  { name: 'משחת שיניים', aisle: H, location: 'home', mode: N },
+  { name: 'מברשות שיניים', aisle: H, location: 'home', mode: N, aliases: ['מברשת שיניים'] },
+  { name: 'דאודורנט', aisle: H, location: 'home' },
+  { name: 'קרם הגנה', aisle: H, location: 'home' },
+  { name: 'צמר גפן', aisle: H, location: 'home', aliases: ['מקלוני אוזניים'] },
 ];
 
 export function normalize(name: string): string {

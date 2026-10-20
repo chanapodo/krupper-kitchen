@@ -3,13 +3,15 @@ import NewDish from '../components/NewDish';
 import RecipePicker from '../components/RecipePicker';
 import { Avatar, go, KosherBadge, RecipeThumb, Sheet, useRoute, Ok, X } from '../components/ui';
 import { DAY_NAMES, dateOf, shiftWeek, shortDate, weekIdOf, weekLabel, ymd } from '../lib/dates';
-import { emptyWeek, MEAL_NAMES, recipeNeedsThaw, voteCounts, weekDays, wishSummary } from '../lib/logic';
-import type { DayKey, MealType, Recipe, Week } from '../lib/types';
+import { useRequests } from '../components/actions';
+import { emptyWeek, MEAL_NAMES, recipeNeedsThaw, slotRequests, voteCounts, weekDays, wishSummary } from '../lib/logic';
+import type { ApprovalRequest, DayKey, MealType, Recipe, Week } from '../lib/types';
 import { useApp } from '../state';
 
 export default function MenuScreen() {
   const route = useRoute();
-  const { isParent, getWeek, recipeMap, votes, settings, store, toast } = useApp();
+  const { isParent, me, getWeek, recipeMap, votes, settings, store, toast, requests } = useApp();
+  const decisions = useRequests();
   const cur = weekIdOf(new Date());
   const [weekId, setWeekId] = useState(route[1] === 'next' ? shiftWeek(cur, 1) : cur);
   const [picking, setPicking] = useState<{ day: DayKey; meal: MealType } | null>(null);
@@ -30,6 +32,22 @@ export default function MenuScreen() {
     if (!slot.recipeIds.includes(r.id)) slot.recipeIds.push(r.id);
     save(w);
     toast(`${r.title} נוסף ל${DAY_NAMES[day]} ${MEAL_NAMES[meal]}`);
+  };
+
+  /** A kid's dish: shown as "ממתין לאישור" until a parent approves it. */
+  const suggestDish = async (day: DayKey, meal: MealType, r: Recipe) => {
+    if (!me) return;
+    const id = store.newId();
+    const req: Omit<ApprovalRequest, 'id'> = {
+      kind: 'menu-add', by: me.id, at: Date.now(), status: 'pending', title: r.title,
+      weekId, day, meal, recipeId: r.id, uid: store.uid(),
+    };
+    try {
+      await store.set(`requests/${id}`, req as unknown as Record<string, unknown>);
+    } catch {
+      return; // refused (old security rules): the toast already says so
+    }
+    toast(`${r.title} נוסף ל${DAY_NAMES[day]} ${MEAL_NAMES[meal]} – ממתין לאישור`, () => store.update(`requests/${id}`, { status: 'cancelled' }));
   };
 
   const removeDish = (day: DayKey, meal: MealType, id: string) => {
@@ -116,6 +134,7 @@ export default function MenuScreen() {
               <div className="slots">
                 {(['lunch', 'dinner'] as MealType[]).map((meal) => {
                   const ids = week.days[day]?.[meal]?.recipeIds ?? [];
+                  const asked = slotRequests(requests, weekId, day, meal);
                   return (
                     <div key={meal} className="slot">
                       <div className="meal-label">{meal === 'lunch' ? '☀️' : '🌙'} {MEAL_NAMES[meal]}</div>
@@ -138,12 +157,30 @@ export default function MenuScreen() {
                           </div>
                         );
                       })}
-                      {isParent && (
-                        <button className="add-dish" onClick={() => setPicking({ day, meal })}>
-                          + {ids.length ? 'עוד מנה' : 'בחירת מנה'}
-                        </button>
-                      )}
-                      {!isParent && !ids.length && <div className="muted small">עוד לא נקבע</div>}
+                      {asked.map((req) => {
+                        const r = req.recipeId ? recipeMap.get(req.recipeId) : undefined;
+                        const kid = settings?.members.find((m) => m.id === req.by);
+                        return (
+                          <div key={req.id} className="dish asked">
+                            <button className="dish-main" onClick={() => r && go(`recipe/${r.id}`)}>
+                              {r ? <RecipeThumb recipe={r} size="sm" /> : <span className="thumb thumb-sm" />}
+                              <span className="dish-title">{r?.title ?? req.title}</span>
+                            </button>
+                            <span className="dish-tags">
+                              <span className="pill warn">⏳ ממתין לאישור{kid ? ` · ${kid.name}` : ''}</span>
+                            </span>
+                            {isParent && (
+                              <span className="asked-actions">
+                                <button className="icon-btn small ok" aria-label={`לאשר את ${req.title}`} onClick={() => decisions.approve(req)}><Ok /></button>
+                                <button className="icon-btn small" aria-label={`לדחות את ${req.title}`} onClick={() => decisions.reject(req)}><X /></button>
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                      <button className="add-dish" onClick={() => setPicking({ day, meal })}>
+                        + {isParent ? (ids.length ? 'עוד מנה' : 'בחירת מנה') : 'להוסיף מנה (באישור הורים)'}
+                      </button>
                     </div>
                   );
                 })}
@@ -159,7 +196,7 @@ export default function MenuScreen() {
           meal={picking.meal}
           current={week.days[picking.day]?.[picking.meal]?.recipeIds ?? []}
           voters={voters}
-          onPick={(r) => { addDish(picking.day, picking.meal, r); setPicking(null); }}
+          onPick={(r) => { if (isParent) addDish(picking.day, picking.meal, r); else suggestDish(picking.day, picking.meal, r); setPicking(null); }}
           onClose={() => setPicking(null)}
         />
       )}

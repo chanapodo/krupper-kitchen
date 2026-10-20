@@ -72,7 +72,7 @@ describe('AI reply -> recipe draft', () => {
     const recipes = new Map([[r.id, r]]);
     const tue = new Date(2026, 9, 20, 9);
     const week: Week = { id: weekIdOf(tue), days: { tue: { dinner: { recipeIds: ['pie'] } } }, skipped: [] };
-    const pantry: PantryItem[] = [{ id: 'b', name: 'בשר טחון', qty: 500, unit: 'גרם', location: 'freezer', updatedAt: 0 }];
+    const pantry: PantryItem[] = [{ id: 'b', name: 'בשר טחון', qty: 500, unit: 'גרם', mode: 'count', location: 'freezer', updatedAt: 0 }];
     const need = neededFromMenu(week, recipes, pantry);
     expect(need.find((n) => n.key === ingredientKey('בשר טחון'))?.qty).toBe(100);
     expect(need.find((n) => n.name === 'ציר בקר')?.aisle).toBe('תבלינים ואפייה');
